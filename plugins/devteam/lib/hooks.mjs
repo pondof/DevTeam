@@ -44,6 +44,7 @@ const AGENT_BASH_RULES = [
   [/\bgit\s+push\b/, 'agents never push; the orchestrator asks the human before anything leaves this machine'],
   [/(^|[\s;&|(])(printenv|env)\s*($|[|;&>])/, 'dumping the environment is denied for agents'],
   [/\bgh\s+(pr\s+(merge|close)|release\s+create|repo\s+(delete|edit))\b/, 'merging, releasing and repo settings are human-only'],
+  [/\bdevteam\b[^|;&]*\s--allow-ungated\b/, 'merging a task without a passing gate is a human decision; report the ungated task instead'],
 ];
 
 export function preBash(input) {

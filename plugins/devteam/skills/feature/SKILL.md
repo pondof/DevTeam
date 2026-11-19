@@ -55,7 +55,7 @@ You are the orchestrator for a full feature. Follow these steps in order. Keep c
 - On return:
   - `devteam run collect "$RUN" --prune` and `devteam run cleanup "$RUN"` (removes merged task branches), then `devteam run status "$RUN"`.
   - **blocked / needs_contract_change**: follow `/devteam:contract-change` for those tasks, then rebuild only them: `devteam run args "$RUN" build --tasks T3,T5`.
-  - **review_failed / merge_conflict / merge_gate_failed**: show the diagnosis in two lines and offer `/devteam:replay <task>` (fresh attempt), or a ruling (accept with known issues, recorded in the ledger).
+  - **review_failed / merge_conflict / merge_gate_failed / merge_ungated**: show the diagnosis in two lines and offer `/devteam:replay <task>` (fresh attempt), or a ruling (accept with known issues, recorded in the ledger).
   - **skipped**: these re-run automatically on the next build call once their dependencies merge.
   - **final**: QA failures or critical/major final findings: create bugfix tasks (`/devteam:bugfix`) or let the human accept them. Don't start checkpoint 3 with an unresolved critical finding unless the human explicitly accepts it.
 - Record rulings: `devteam run ledger "$RUN" ruling "<what> — <why> — <cost if wrong>"`.

@@ -97,9 +97,23 @@ export function normalizeRel(p) {
   return String(p).replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
+/**
+ * True when `file` matches at least one positive glob and no `!`-prefixed exclusion,
+ * e.g. ["packages/db/**", "!packages/db/seeds/**"] owns packages/db except the seeds.
+ */
 export function matchAny(file, globs) {
   const f = normalizeRel(file);
-  return (globs || []).some((g) => globToRegExp(g).test(f));
+  const list = globs || [];
+  const neg = list.filter((g) => g.startsWith('!')).map((g) => g.slice(1));
+  return list.some((g) => !g.startsWith('!') && globToRegExp(g).test(f)) && !neg.some((g) => globToRegExp(g).test(f));
+}
+
+/** Is `pattern` entirely covered by one of the `!` exclusions in `globs`? */
+export function excludedBy(globs, pattern) {
+  return (globs || []).filter((g) => g.startsWith('!')).some((n) => {
+    const neg = n.slice(1);
+    return normalizeRel(pattern) === normalizeRel(neg) || globToRegExp(neg).test(samplePath(pattern));
+  });
 }
 
 const WILDCARD = /[*?]/;

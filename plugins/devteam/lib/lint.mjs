@@ -1,7 +1,7 @@
 // Consistency checks for the plugin and for a project's devteam config.
 import fs from 'node:fs';
 import path from 'node:path';
-import { PLUGIN_ROOT, readJSON, readText, exists, patternsOverlap } from './util.mjs';
+import { PLUGIN_ROOT, readJSON, readText, exists, patternsOverlap, excludedBy } from './util.mjs';
 import { effectiveConfig, pluginRegistry } from './config.mjs';
 
 const KINDS = new Set(['main', 'planner', 'implementer', 'integrator', 'reviewer', 'support', 'bridge']);
@@ -52,9 +52,12 @@ export function lintPlugin() {
   for (let i = 0; i < impl.length; i++) for (let j = i + 1; j < impl.length; j++) {
     const [a, ra] = impl[i]; const [b, rb] = impl[j];
     // Cross-cutting file-type globs (**/Dockerfile, **/*.e2e.ts, **/README.md) overlap by design; report directory overlaps only.
-    const dirGlobs = (owns) => owns.filter((g) => !g.startsWith('**/'));
+    const dirGlobs = (owns) => owns.filter((g) => !g.startsWith('**/') && !g.startsWith('!'));
     const hits = [];
-    for (const ga of dirGlobs(ra.owns)) for (const gb of dirGlobs(rb.owns)) if (patternsOverlap(ga, gb)) hits.push(`${ga} ~ ${gb}`);
+    for (const ga of dirGlobs(ra.owns)) for (const gb of dirGlobs(rb.owns)) {
+      // An explicit carve-out ("!packages/db/seeds/**") on either side makes nested ownership intentional.
+      if (patternsOverlap(ga, gb) && !excludedBy(ra.owns, gb) && !excludedBy(rb.owns, ga)) hits.push(`${ga} ~ ${gb}`);
+    }
     if (hits.length) problems.push(`warn: ownership overlap ${a} <-> ${b}: ${hits.join(', ')} (tasks must split these files explicitly)`);
   }
   try { readJSON(path.join(PLUGIN_ROOT, 'hooks', 'hooks.json')); } catch (e) { problems.push(`error: hooks/hooks.json: ${e.message}`); }

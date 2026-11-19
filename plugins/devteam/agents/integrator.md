@@ -20,11 +20,12 @@ devteam merge <branch> --run "<runDir>" --task <id>
 The command merges with `--no-ff`, regenerates the lockfile when the lockfile is the only conflict, runs `devteam gate --level fast` on the result, and **rolls the merge back** if the gate is red. Read its JSON output:
 - `merged`: next task.
 - `conflict` with non-lockfile files: look at the conflict. If it is **trivial and mechanical** (adjacent import lines, both sides adding entries to the same list, formatting), resolve it: `git merge --no-ff <branch>`, fix the markers keeping both intents, `git add`, `git commit --no-edit`, then `devteam gate --level fast`. If the gate is red, `git reset --hard HEAD~1` and report the conflict instead. Anything semantic (two tasks changed the same logic differently) is **not yours to decide**: report it.
+- `ungated`: the task branch has no passing gate stamped on its head (or it is stale). Do **not** pass `--allow-ungated`; report it. The task goes back to its owner.
 - `gate_failed`: the merge was rolled back. Report the failing command and its tail; the orchestrator sends it back to the owner or the debugger.
 
 After the wave: `devteam run collect "<runDir>" --prune` removes the worktrees of merged tasks.
 
-Return structured output: `merged` (task ids in order), `failed` (task id, status `conflict|gate_failed`, files, reason), `head` (epic HEAD after the wave).
+Return structured output: `merged` (task ids in order), `failed` (task id, status `conflict|gate_failed|ungated`, files, reason), `head` (epic HEAD after the wave).
 
 ## mode=pr: prepare the pull request (only when the orchestrator says the human approved)
 Write the PR body to `<runDir>/pr.md`: summary from the spec, the list of tasks with one line each (from `devteam run status`), review and security results, how to test, and risks. The orchestrator runs the push and `gh pr create` itself, after the human says yes. You never push.

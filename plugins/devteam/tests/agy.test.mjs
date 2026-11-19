@@ -184,3 +184,15 @@ test('a denied shell command is retried once with a no-shell instruction (run an
   const always = ctx.agy(['review', '--kind', 'final'], 'denied').json;
   assert.match(always.summary, /after a no-shell retry/);
 });
+
+test('run: an unavailable Gemini attempt leaves no empty task branch or worktree behind', () => {
+  const ctx = setup();
+  const { runDir, wt } = withTask(ctx);
+  const r = ctx.agy(['run', '--run', runDir, '--task', 'D1'], 'denied', wt);
+  assert.equal(r.json.status, 'unavailable');
+  assert.equal(g(ctx.dir, 'branch', '--list', 'task/agy/*', 'devteam-agy-*'), '', 'no stray branch for the Claude fallback to trip over');
+  const cache = path.join(ctx.home, '.cache', 'devteam', 'worktrees');
+  const left = fs.existsSync(cache) ? fs.readdirSync(cache).flatMap((d) => fs.readdirSync(path.join(cache, d))) : [];
+  assert.deepEqual(left, []);
+  assert.match(fs.readFileSync(path.join(runDir, 'ledger.md'), 'utf8'), /D1 unavailable: removed its empty Gemini worktree and branch task\/agy\/D1/);
+});

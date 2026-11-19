@@ -22,10 +22,13 @@ function emit(obj, code = 0) {
 }
 const unavailable = (reason, extra = {}) => emit({ status: 'unavailable', reason: String(reason).slice(0, 1500), ...extra });
 /** Schema-complete "unavailable" task report, so the bridge can return it unchanged and the hook keeps the reason. */
-const taskUnavailable = (reason, taskId, wt) => emit({
+// Cleanup hook for `run`: set once the wrapper creates its own sibling worktree, so an unavailable Gemini
+// attempt leaves no empty task branch or worktree behind for the Claude fallback to trip over.
+let onUnavailable = null;
+const taskUnavailable = (reason, taskId, wt) => { if (onUnavailable) { try { onUnavailable(); } catch { /* best effort */ } } emit({
   task_id: taskId || '', status: 'unavailable', summary: `UNAVAILABLE: ${String(reason).slice(0, 1200)}`, reason: String(reason).slice(0, 1500),
   branch: '', head_sha: '', worktree: wt || '', files_changed: [], commands_run: [], contract_change_request: '',
-});
+}); };
 
 function agyBin() {
   if (process.env.DEVTEAM_AGY) return process.env.DEVTEAM_AGY;
@@ -196,6 +199,14 @@ async function main() {
       const add = U.sh('git', ['worktree', 'add', '-q', '-b', `devteam-agy-${taskId}-${process.pid}`, alt, base], { cwd: root });
       if (add.code !== 0) taskUnavailable(`could not create a Gemini worktree: ${(add.err || add.out).trim()}`, taskId, wt);
       wt = alt;
+      onUnavailable = () => {
+        // Remove the sibling worktree and its branch (renamed by task start) if nothing was committed on it.
+        const br = U.tryGit(['rev-parse', '--abbrev-ref', 'HEAD'], alt);
+        const ahead = br ? Number(U.tryGit(['rev-list', '--count', `${base}..${br}`], root) || '0') : 0;
+        U.sh('git', ['worktree', 'remove', '--force', alt], { cwd: root });
+        if (br && br !== 'HEAD' && ahead === 0) U.sh('git', ['branch', '-D', br], { cwd: root });
+        U.appendLedger(runDir, 'gemini', `${taskId} unavailable: removed its empty Gemini worktree${br && ahead === 0 ? ` and branch ${br}` : ''}`);
+      };
     }
     const startArgs = ['task', 'start', runDir, taskId, '--engine', 'gemini', ...(flags.role ? ['--role', flags.role] : [])];
     const start = U.sh(DEVTEAM, startArgs, { cwd: wt });

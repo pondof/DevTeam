@@ -29,7 +29,8 @@ const HELP = `devteam — multi-agent team plumbing
   devteam task reset <run> <task...>        forget previous attempts (next start begins from the epic branch)
   devteam commit "<message>"                git add -A + commit with Run/Task/Role/Engine trailers
   devteam gate [--level fast|full|security|contracts|all] [--json]
-  devteam merge <branch> [--run r --task T] [--gate fast|full|none]
+  devteam merge <branch> [--run r --task T] [--gate fast|full|none] [--allow-ungated]
+                    with --task, refuses (status ungated) unless the branch head has a passing stamped gate
 
   devteam new-role <name> [--scope project|plugin] [--kind implementer|reviewer|support|planner]
                    [--owns "a/**,b/**"] [--engine claude|gemini] [--model sonnet] [--effort medium]
@@ -173,7 +174,7 @@ async function main(argv) {
     const R = await lib('run.mjs');
     const { flags, rest } = parseFlags([sub, ...more].filter((x) => x !== undefined));
     const run = flags.run ? R.resolveRunDir(flags.run) : null;
-    const r = M.mergeBranch(rest[0], { runDir: run, taskId: flags.task, gate: flags.gate || 'fast' });
+    const r = M.mergeBranch(rest[0], { runDir: run, taskId: flags.task, gate: flags.gate || 'fast', allowUngated: !!flags['allow-ungated'] });
     console.log(JSON.stringify(r, null, 2));
     return r.status === 'merged' ? 0 : 3;
   }

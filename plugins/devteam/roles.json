@@ -112,7 +112,8 @@
       "effort": "medium",
       "owns": [
         "apps/api/**",
-        "packages/db/**"
+        "packages/db/**",
+        "!packages/db/seeds/**"
       ],
       "description": "API routes, services, persistence and migrations."
     },

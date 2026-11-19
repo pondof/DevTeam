@@ -46,6 +46,8 @@ export function initProject({ stack = 'ts', sandbox = true, force = false, cwd =
   // .gitignore
   const gi = path.join(root, '.gitignore');
   const lines = ['.team/runs/', '.team/current', '.team/context/', '.team/worktrees/', '.team/hook-errors.log', '.devteam/', '.claude/worktrees/', '.claude/settings.local.json'];
+  // Next.js (16+) writes an AGENTS.md into each app on dev/build; it would dirty the tree and block the gate.
+  if (stack === 'ts') lines.push('apps/*/AGENTS.md');
   const cur = readText(gi);
   const missing = lines.filter((l) => !cur.split('\n').includes(l));
   if (missing.length) {

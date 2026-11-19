@@ -1,12 +1,30 @@
 // Serial merge queue step used by the integrator: merge one task branch into the epic branch,
 // regenerate lockfiles on lockfile-only conflicts, gate the result, roll back on red.
 import path from 'node:path';
-import { git, sh, shell, worktreeRoot, isLinkedWorktree, readJSON, matchAny, appendLedger, tail } from './util.mjs';
+import { git, tryGit, sh, shell, worktreeRoot, isLinkedWorktree, readJSON, matchAny, appendLedger, tail } from './util.mjs';
 import { effectiveConfig } from './config.mjs';
 import { updateState, loadPlan } from './run.mjs';
 import { runGate } from './gate.mjs';
 
-export function mergeBranch(branch, { runDir, taskId, gate = 'fast', cwd = process.cwd() } = {}) {
+/** Find the worktree that has `branch` checked out and check its stamped gate result against the branch head. */
+export function gateEvidence(root, branch) {
+  const tip = tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], root);
+  if (!tip) return { ok: false, why: `branch ${branch} does not exist` };
+  const list = tryGit(['worktree', 'list', '--porcelain'], root) || '';
+  for (const block of list.split('\n\n')) {
+    const wt = (block.match(/^worktree (.+)$/m) || [])[1];
+    const br = (block.match(/^branch refs\/heads\/(.+)$/m) || [])[1];
+    if (!wt || br !== branch) continue;
+    const g = readJSON(path.join(wt, '.devteam', 'gates.json'), null);
+    if (!g) return { ok: false, worktree: wt, why: `no gate result in ${wt}/.devteam/gates.json: the task never ran \`devteam gate\`` };
+    if (g.head !== tip) return { ok: false, worktree: wt, why: `gate ran on ${String(g.head).slice(0, 10)} but ${branch} is at ${tip.slice(0, 10)}` };
+    if (!g.pass) return { ok: false, worktree: wt, why: `gate is red for ${tip.slice(0, 10)}: ${g.reason || 'see gates.json'}` };
+    return { ok: true, worktree: wt, head: tip, level: g.level };
+  }
+  return { ok: false, why: `no worktree has ${branch} checked out, so there is no gate evidence (merge before \`devteam run collect --prune\`)` };
+}
+
+export function mergeBranch(branch, { runDir, taskId, gate = 'fast', allowUngated = false, cwd = process.cwd() } = {}) {
   const root = worktreeRoot(cwd);
   if (!root) throw new Error('not inside a git repository');
   if (isLinkedWorktree(cwd)) throw new Error('run merges from the main checkout, not a task worktree');
@@ -22,6 +40,14 @@ export function mergeBranch(branch, { runDir, taskId, gate = 'fast', cwd = proce
   const msg = `merge ${taskId || branch}${task ? `: ${task.title}` : ''}`;
   const trailers = taskId ? ['--trailer', `Run: ${run.id || ''}`, '--trailer', `Task: ${taskId}`, '--trailer', 'Role: integrator'] : [];
   const out = { branch, task: taskId || null, before, status: 'merged', regenerated: [] };
+
+  // A task branch merges only with evidence: a passing fast/full gate stamped with the branch's exact head,
+  // found in the worktree that has the branch checked out (Claude or Gemini sibling worktree).
+  if (runDir && taskId && !allowUngated) {
+    const ev = gateEvidence(root, branch);
+    out.gate_evidence = ev;
+    if (!ev.ok) return record(runDir, taskId, { ...out, status: 'ungated', reason: ev.why });
+  }
 
   const r = sh('git', ['merge', '--no-ff', '--no-edit', '-m', msg, branch], { cwd: root });
   if (r.code !== 0) {
@@ -66,12 +92,12 @@ function record(runDir, taskId, out) {
   if (runDir && taskId) {
     try {
       updateState(runDir, taskId, {
-        status: out.status === 'merged' ? 'merged' : out.status === 'gate_failed' ? 'merge_gate_failed' : 'merge_conflict',
+        status: { merged: 'merged', gate_failed: 'merge_gate_failed', ungated: 'merge_ungated' }[out.status] || 'merge_conflict',
         merged_head: out.status === 'merged' ? out.head : undefined,
         merge: out,
       });
     } catch { /* state is best effort */ }
-    appendLedger(runDir, 'merge', `${taskId} ${out.status}${out.files ? ' files=' + out.files.join(',') : ''}${out.regenerated?.length ? ' regenerated=' + out.regenerated.join(',') : ''}${out.gate && !out.gate.pass ? ' gate=' + out.gate.reason : ''}`);
+    appendLedger(runDir, 'merge', `${taskId} ${out.status}${out.files ? ' files=' + out.files.join(',') : ''}${out.regenerated?.length ? ' regenerated=' + out.regenerated.join(',') : ''}${out.gate && !out.gate.pass ? ' gate=' + out.gate.reason : ''}${out.status === 'ungated' ? ' reason=' + out.reason : ''}`);
   }
   return out;
 }

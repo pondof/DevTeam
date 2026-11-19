@@ -270,7 +270,7 @@ test('merge: clean merge, lockfile-only conflict regenerated, real conflict abor
   branch('t/a', 'apps/api/src/index.ts', 'export const x = 10;\n', 'lock: a\n');
   branch('t/b', 'apps/web/page.tsx', 'export default 10;\n', 'lock: b\n');
   branch('t/c', 'apps/api/src/index.ts', 'export const x = 99;\n');
-  let r = JSON.parse(run(['merge', 't/a', '--run', runDir, '--task', 'T1'], { cwd: dir }).stdout);
+  let r = JSON.parse(run(['merge', 't/a', '--run', runDir, '--task', 'T1', '--allow-ungated'], { cwd: dir }).stdout);
   assert.equal(r.status, 'merged');
   assert.match(g(dir, 'log', '-1', '--format=%B'), /Task: T1/);
   r = JSON.parse(run(['merge', 't/b'], { cwd: dir }).stdout);
@@ -381,4 +381,59 @@ test('an unavailable Gemini report is kept separately and does not overwrite rep
   assert.ok(files.some((f) => f.startsWith('unavailable-backend-engineer-implement-')), files.join(','));
   assert.ok(!files.includes('report.json'));
   assert.match(fs.readFileSync(path.join(runDir, 'ledger.md'), 'utf8'), /reason=UNAVAILABLE: agy returned no output/);
+});
+
+// ---------------- review fixes: ungated merges, carve-outs, generated files ----------------
+test('merge refuses a task branch without a passing gate stamped on its head', () => {
+  const { dir, runDir, wt } = setupTask();
+  run(['task', 'start', runDir, 'T1'], { cwd: wt });
+  fs.writeFileSync(path.join(wt, 'apps/api/src/index.ts'), 'export const x = 6;\n');
+  run(['commit', 'T1: x=6'], { cwd: wt });
+  const merge = () => run(['merge', 'task/demo/T1', '--run', runDir, '--task', 'T1'], { cwd: dir });
+  let r = merge();
+  assert.equal(r.status, 3);
+  let out = JSON.parse(r.stdout);
+  assert.equal(out.status, 'ungated');
+  assert.match(out.reason, /never ran `devteam gate`/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(runDir, 'tasks', 'T1', 'state.json'), 'utf8')).status, 'merge_ungated');
+  run(['gate'], { cwd: wt });
+  fs.writeFileSync(path.join(wt, 'apps/api/src/index.ts'), 'export const x = 7;\n');
+  run(['commit', 'T1: x=7 after the gate'], { cwd: wt });
+  out = JSON.parse(merge().stdout);
+  assert.equal(out.status, 'ungated');
+  assert.match(out.reason, /gate ran on .* but task\/demo\/T1 is at/, 'a stale gate is not evidence');
+  run(['gate'], { cwd: wt });
+  out = JSON.parse(merge().stdout);
+  assert.equal(out.status, 'merged', JSON.stringify(out));
+  assert.equal(out.gate_evidence.ok, true);
+  assert.match(g(dir, 'log', '-1', '--format=%B'), /Task: T1/);
+});
+
+test('agents cannot pass --allow-ungated', () => {
+  const dir = tempRepo();
+  assert.equal(hook('pre-bash', { cwd: dir, agent_type: 'devteam:integrator', tool_input: { command: 'devteam merge task/x/T1 --run r --task T1 --allow-ungated' } }).status, 2);
+  assert.equal(hook('pre-bash', { cwd: dir, agent_type: 'devteam:integrator', tool_input: { command: 'devteam merge task/x/T1 --run r --task T1' } }).status, 0);
+});
+
+test('ownership carve-outs: "!glob" excludes, lint accepts intentional nesting, plans respect it', () => {
+  assert.ok(U.matchAny('packages/db/migrations/1.sql', ['packages/db/**', '!packages/db/seeds/**']));
+  assert.ok(!U.matchAny('packages/db/seeds/users.ts', ['packages/db/**', '!packages/db/seeds/**']));
+  assert.ok(U.excludedBy(['packages/db/**', '!packages/db/seeds/**'], 'packages/db/seeds/**'));
+  const cfg = C.effectiveConfig(os.tmpdir());
+  const v = P.validatePlan({ tasks: [{ id: 'T1', title: 'seed', role: 'backend-engineer', files: ['packages/db/seeds/users.ts'], acceptance: ['x'] }] }, cfg);
+  assert.ok(v.errors.some((e) => e.includes('outside backend-engineer ownership')));
+  const ok = P.validatePlan({ tasks: [{ id: 'T1', title: 'seed', role: 'data-engineer', files: ['packages/db/seeds/users.ts'], acceptance: ['x'] }] }, cfg);
+  assert.deepEqual(ok.errors, []);
+  const lint = run(['lint']);
+  assert.match(lint.stdout, /0 error\(s\), 0 warning\(s\)/);
+});
+
+test('init (ts) ignores the AGENTS.md that Next.js writes into apps', () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'devteam-init2-')));
+  g(dir, 'init', '-q', '-b', 'main');
+  run(['init', '--stack', 'ts'], { cwd: dir });
+  assert.match(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^apps\/\*\/AGENTS\.md$/m);
+  fs.mkdirSync(path.join(dir, 'apps', 'web'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'apps', 'web', 'AGENTS.md'), 'generated\n');
+  assert.equal(g(dir, 'status', '--porcelain', '--', 'apps'), '');
 });

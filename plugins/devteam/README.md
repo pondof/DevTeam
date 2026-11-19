@@ -8,7 +8,7 @@ It is built around four problems that multi-agent setups usually hit, and handle
 |---|---|
 | **Rate limits** (Claude Pro) | Explicit model and effort per role, concurrency caps, context packs (brief + repo map) instead of cold exploration, lazy review lenses, Gemini offload, proportional paths (quick / bugfix / feature), resumable runs |
 | **Coordination tax** | No manager agents. A deterministic workflow does dispatch, ordering, waves, fix-loop caps and the merge queue. Agents get one brief in and return one schema-validated report |
-| **Merge conflicts / contract drift** | Contracts are frozen first and types are generated from them. Per-task file ownership is enforced by a hook *and* the gate. A scheduler only parallelizes tasks with disjoint files. Each task gets its own worktree. Hot files and the lockfile belong to the integrator. Merges are serial and gated, with lockfile regeneration |
+| **Merge conflicts / contract drift** | Contracts are frozen first and types are generated from them. Per-task file ownership is enforced by a hook *and* the gate, and `devteam merge` refuses a task branch unless a passing gate is stamped on its exact head (`merge_ungated`). A scheduler only parallelizes tasks with disjoint files. Each task gets its own worktree. Hot files and the lockfile belong to the integrator. Merges are serial and gated, with lockfile regeneration |
 | **Hard debugging** | Every run has a directory with spec, design, plan, ledger, per-task state, reports, reviews and gate results stamped with a HEAD sha. Commit trailers (`Run:`, `Task:`, `Role:`, `Engine:`). Replayable briefs |
 
 ```
@@ -93,7 +93,7 @@ Optional templates (`devteam new-role --list-templates`): mobile-engineer, ml-en
 | `hot_files` | integrator-owned files that tasks may not list |
 | `security_tags` | risk tags that route the security review lens |
 | `gemini.enabled / review_tasks / *_model` | Gemini on/off; review `all` / `risky` / `none` tasks; model ids from `agy models` |
-| `roles.<name>` | per-role overrides (`enabled`, `owns`, `model`, `effort`, `engine`, `review_when`), or a new `"local": true` role |
+| `roles.<name>` | per-role overrides (`enabled`, `owns`, `model`, `effort`, `engine`, `review_when`), or a new `"local": true` role. `owns` supports carve-outs: `["packages/db/**", "!packages/db/seeds/**"]` |
 
 Make your linters and formatters ignore `.devteam/` and `.team/` (biome: `vcs.useIgnoreFile: true`; eslint: ignore patterns).
 
