@@ -2,14 +2,40 @@
   "version": 1,
   "defaults": {
     "base_branch": "main",
-    "parallel": { "claude": 2, "gemini": 2 },
+    "parallel": {
+      "claude": 2,
+      "gemini": 2
+    },
     "fix_loop_max": 2,
     "max_task_files": 12,
-    "security_tags": ["auth", "input", "deps", "infra", "crypto", "pii", "secrets", "payments"],
-    "regenerable": ["pnpm-lock.yaml", "package-lock.json", "yarn.lock"],
+    "security_tags": [
+      "auth",
+      "input",
+      "deps",
+      "infra",
+      "crypto",
+      "pii",
+      "secrets",
+      "payments"
+    ],
+    "regenerable": [
+      "pnpm-lock.yaml",
+      "package-lock.json",
+      "yarn.lock"
+    ],
     "regenerate_cmd": "pnpm install --lockfile-only",
-    "hot_files": ["package.json", "pnpm-workspace.yaml", "tsconfig.base.json", "turbo.json", ".npmrc"],
-    "checkpoints": ["spec", "design", "pr"],
+    "hot_files": [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "tsconfig.base.json",
+      "turbo.json",
+      ".npmrc"
+    ],
+    "checkpoints": [
+      "spec",
+      "design",
+      "pr"
+    ],
     "gates": {
       "fast": [],
       "contracts": [],
@@ -32,81 +58,215 @@
   },
   "roles": {
     "orchestrator": {
-      "team": "plan", "kind": "main", "engine": "claude", "model": "opus", "effort": "high",
-      "owns": [".team/**"],
+      "team": "plan",
+      "kind": "main",
+      "engine": "claude",
+      "model": "opus",
+      "effort": "high",
+      "owns": [
+        ".team/**"
+      ],
       "description": "Main-thread coordinator: intake, checkpoints, rulings, runs workflows. Never writes product code."
     },
     "product-analyst": {
-      "team": "plan", "kind": "planner", "engine": "claude", "model": "sonnet", "effort": "high",
-      "owns": [".team/runs/**"],
+      "team": "plan",
+      "kind": "planner",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "high",
+      "owns": [
+        ".team/runs/**"
+      ],
       "description": "Turns a request into a testable spec with acceptance criteria and an out-of-scope list."
     },
     "architect": {
-      "team": "plan", "kind": "planner", "engine": "claude", "model": "opus", "effort": "high",
-      "owns": ["packages/contracts/**", "docs/adr/**", ".team/runs/**"],
+      "team": "plan",
+      "kind": "planner",
+      "engine": "claude",
+      "model": "opus",
+      "effort": "high",
+      "owns": [
+        "packages/contracts/**",
+        "docs/adr/**",
+        ".team/runs/**"
+      ],
       "description": "Design, ADRs, API/event/DB contracts and the task DAG with per-task file lists. Sole owner of contracts."
     },
     "ux-designer": {
-      "team": "plan", "kind": "implementer", "engine": "claude", "model": "sonnet", "effort": "medium",
-      "owns": ["docs/ux/**"], "enabled": false,
+      "team": "plan",
+      "kind": "implementer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "medium",
+      "owns": [
+        "docs/ux/**"
+      ],
+      "enabled": false,
       "description": "User flows and component specs; may use Figma tools when available."
     },
     "backend-engineer": {
-      "team": "build", "kind": "implementer", "engine": "claude", "model": "sonnet", "effort": "medium",
-      "owns": ["apps/api/**", "packages/db/**"],
+      "team": "build",
+      "kind": "implementer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "medium",
+      "owns": [
+        "apps/api/**",
+        "packages/db/**"
+      ],
       "description": "API routes, services, persistence and migrations."
     },
     "frontend-engineer": {
-      "team": "build", "kind": "implementer", "engine": "claude", "model": "sonnet", "effort": "medium",
-      "owns": ["apps/web/**", "packages/ui/**"],
+      "team": "build",
+      "kind": "implementer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "medium",
+      "owns": [
+        "apps/web/**",
+        "packages/ui/**"
+      ],
       "description": "Web UI built against the contract-generated client and mocks."
     },
     "data-engineer": {
-      "team": "build", "kind": "implementer", "engine": "claude", "model": "sonnet", "effort": "medium",
-      "owns": ["data/**", "pipelines/**", "packages/db/seeds/**"],
-      "review_when": { "globs": ["packages/db/migrations/**", "**/*.sql"], "tags": ["data", "migration"] },
+      "team": "build",
+      "kind": "implementer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "medium",
+      "owns": [
+        "data/**",
+        "pipelines/**",
+        "packages/db/seeds/**"
+      ],
+      "review_when": {
+        "globs": [
+          "packages/db/migrations/**",
+          "**/*.sql"
+        ],
+        "tags": [
+          "data",
+          "migration"
+        ]
+      },
       "description": "ETL, analytics events, seeds; mandatory reviewer of every migration."
     },
     "devops-engineer": {
-      "team": "build", "kind": "implementer", "engine": "claude", "model": "sonnet", "effort": "medium",
-      "owns": ["infra/**", "docker/**", ".github/workflows/**", "compose*.yml", "compose*.yaml", "**/Dockerfile", ".dockerignore"],
-      "review_when": { "globs": ["**/Dockerfile", "compose*.yml", ".github/workflows/**"], "tags": ["infra"] },
+      "team": "build",
+      "kind": "implementer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "medium",
+      "owns": [
+        "infra/**",
+        "docker/**",
+        ".github/workflows/**",
+        "compose*.yml",
+        "compose*.yaml",
+        "**/Dockerfile",
+        ".dockerignore"
+      ],
+      "review_when": {
+        "globs": [
+          "**/Dockerfile",
+          "compose*.yml",
+          ".github/workflows/**"
+        ],
+        "tags": [
+          "infra"
+        ]
+      },
       "description": "CI/CD, containers, local and staging environments. Never production."
     },
     "qa-engineer": {
-      "team": "verify", "kind": "implementer", "engine": "claude", "model": "sonnet", "effort": "medium",
-      "owns": ["tests/**", "**/*.e2e.ts", "playwright.config.ts"],
+      "team": "verify",
+      "kind": "implementer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "medium",
+      "owns": [
+        "tests/**",
+        "**/*.e2e.ts",
+        "playwright.config.ts"
+      ],
       "description": "Writes e2e and integration tests from acceptance criteria; runs system QA; never edits product code."
     },
     "tech-writer": {
-      "team": "verify", "kind": "implementer", "engine": "gemini", "model": "haiku", "effort": "low",
-      "owns": ["docs/**", "README.md", "CHANGELOG.md", "**/README.md"],
+      "team": "verify",
+      "kind": "implementer",
+      "engine": "gemini",
+      "model": "haiku",
+      "effort": "low",
+      "owns": [
+        "docs/**",
+        "README.md",
+        "CHANGELOG.md",
+        "**/README.md"
+      ],
       "description": "README, API docs and changelog. Runs on Gemini by default; haiku fallback."
     },
     "integrator": {
-      "team": "build", "kind": "integrator", "engine": "claude", "model": "sonnet", "effort": "medium",
-      "owns": ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json", "turbo.json", ".npmrc"],
+      "team": "build",
+      "kind": "integrator",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "medium",
+      "owns": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "tsconfig.base.json",
+        "turbo.json",
+        ".npmrc",
+        ".team/runs/**"
+      ],
       "description": "Serial merge queue in DAG order, lockfile regeneration, dependency requests, PR creation."
     },
     "code-reviewer": {
-      "team": "verify", "kind": "reviewer", "engine": "claude", "model": "sonnet", "effort": "high",
-      "final_model": "opus", "final_effort": "high",
+      "team": "verify",
+      "kind": "reviewer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "high",
+      "final_model": "opus",
+      "final_effort": "high",
       "owns": [],
       "description": "Spec compliance and code quality review of one task, or the whole branch at the end."
     },
     "security-engineer": {
-      "team": "verify", "kind": "reviewer", "engine": "claude", "model": "sonnet", "effort": "high",
+      "team": "verify",
+      "kind": "reviewer",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "high",
       "owns": [],
-      "review_when": { "tags": ["@security_tags"] },
+      "review_when": {
+        "tags": [
+          "@security_tags"
+        ]
+      },
       "description": "Threat model at design time, security review of risky tasks, deterministic scanners at the end."
     },
     "debugger": {
-      "team": "verify", "kind": "support", "engine": "claude", "model": "sonnet", "effort": "high",
-      "owns": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "tests/**"],
+      "team": "verify",
+      "kind": "support",
+      "engine": "claude",
+      "model": "sonnet",
+      "effort": "high",
+      "owns": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "tests/**"
+      ],
       "description": "Reproduces failures with a failing test and finds the root cause; hands the fix to the owning role."
     },
     "gemini-bridge": {
-      "team": "bridge", "kind": "bridge", "engine": "claude", "model": "haiku", "effort": "low",
+      "team": "bridge",
+      "kind": "bridge",
+      "engine": "claude",
+      "model": "haiku",
+      "effort": "low",
       "owns": [],
       "description": "Runs one devteam-agy command and returns its JSON verbatim, so workflows can reach Antigravity."
     }
