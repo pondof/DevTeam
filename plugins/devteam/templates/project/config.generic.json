@@ -1,0 +1,14 @@
+{
+  "project": "",
+  "base_branch": "main",
+  "parallel": { "claude": 2, "gemini": 2 },
+  "fix_loop_max": 2,
+  "gates": {
+    "contracts": [],
+    "fast": [],
+    "full": [],
+    "timeout_sec": 900
+  },
+  "gemini": { "enabled": true, "review_tasks": "risky" },
+  "roles": {}
+}

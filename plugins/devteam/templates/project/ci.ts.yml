@@ -1,0 +1,59 @@
+# devteam CI: the same deterministic gates the agents run locally. No LLM calls, no API keys.
+name: devteam-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s contracts:check
+      - run: pnpm -s lint
+      - run: pnpm -s typecheck
+      - run: pnpm -s test
+      - run: pnpm -s build
+
+  e2e:
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: docker compose up -d --wait
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm -s test:e2e
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:latest git --no-banner --redact .
+      - name: osv-scanner
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src ghcr.io/google/osv-scanner:latest scan source -r /src
+      - name: semgrep
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep semgrep scan --config p/typescript --config p/secrets --error --metrics=off

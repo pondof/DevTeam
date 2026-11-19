@@ -1,0 +1,22 @@
+{
+  "project": "",
+  "base_branch": "main",
+  "parallel": { "claude": 2, "gemini": 2 },
+  "fix_loop_max": 2,
+  "max_task_files": 12,
+  "gates": {
+    "contracts": ["pnpm -s contracts:check"],
+    "fast": ["pnpm -s lint", "pnpm -s typecheck", "pnpm -s test"],
+    "full": ["pnpm -s build", "pnpm -s test:e2e"],
+    "security": [
+      "gitleaks git --no-banner --redact .",
+      "osv-scanner scan source -r .",
+      "semgrep scan --config p/typescript --config p/secrets --error --quiet --metrics=off"
+    ],
+    "timeout_sec": 900
+  },
+  "regenerable": ["pnpm-lock.yaml"],
+  "regenerate_cmd": "pnpm install --lockfile-only",
+  "gemini": { "enabled": true, "review_tasks": "risky" },
+  "roles": {}
+}

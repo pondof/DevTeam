@@ -1,0 +1,31 @@
+{
+  "description": "devteam guards: dangerous-command guard for Bash, file-ownership enforcement for edits, a stop gate that keeps implementers working until their quality gate is green for HEAD, zero-token report capture into the run ledger, and run context after startup/compaction. All handlers are no-ops outside devteam projects and devteam agents.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/devteam\" hook pre-bash", "timeout": 10 }]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/devteam\" hook pre-edit", "timeout": 10 }]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/devteam\" hook subagent-start", "timeout": 10 }]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/devteam\" hook subagent-stop", "timeout": 30 }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact|clear",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/devteam\" hook session-start", "timeout": 10 }]
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "devteam",
+  "owner": {
+    "name": "devteam maintainers"
+  },
+  "metadata": {
+    "description": "Local marketplace for the devteam multi-agent software team plugin",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "devteam",
+      "source": "./plugins/devteam",
+      "description": "A multi-agent software team: orchestrator, architect, backend/frontend/data/devops engineers, QA, devsecops, reviewers, with Antigravity (Gemini) for cross-model review, repo mapping and overflow work.",
+      "version": "0.1.0",
+      "category": "development"
+    }
+  ]
+}

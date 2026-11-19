@@ -1,0 +1,209 @@
+#!/usr/bin/env node
+// devteam CLI — deterministic plumbing for the multi-agent team (runs, plans, tasks, gates, merges, hooks).
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const here = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
+const lib = (m) => import(pathToFileURL(path.join(here, '..', 'lib', m)).href);
+
+const HELP = `devteam — multi-agent team plumbing
+
+  devteam init [--stack ts|generic] [--no-sandbox] [--force]   set up the current repo
+  devteam config [--json]                                       effective roles and settings
+  devteam lint [--project]                                      check plugin (and project) consistency
+
+  devteam run new <slug>                    create .team/runs/<id> and make it current
+  devteam run current | status [run]        show the active run / its state
+  devteam run epic [run]                    create or switch to the run's team/<slug> branch
+  devteam run args <run> <design|build|review> [--mode feature|quick|bugfix] [--tasks T1,T2]
+                    [--overflow] [--redo] [--final false] [--feedback text] [--base b --head h --focus f]
+  devteam run ledger <run> <event> <message...>
+  devteam run feedback <run> <task> <file|->   store review feedback for the next fix round
+  devteam run collect <run> [--prune]         gather worktree results; remove merged worktrees
+
+  devteam plan check [run]                  validate plan.json, compute waves (writes them back)
+  devteam task start <run> <task> [--role r] [--allow-main] [--engine claude|gemini]
+  devteam task brief <run> <task>           print a task brief without starting it
+  devteam task reset <run> <task...>        forget previous attempts (next start begins from the epic branch)
+  devteam commit "<message>"                git add -A + commit with Run/Task/Role/Engine trailers
+  devteam gate [--level fast|full|security|contracts|all] [--json]
+  devteam merge <branch> [--run r --task T] [--gate fast|full|none]
+
+  devteam new-role <name> [--scope project|plugin] [--kind implementer|reviewer|support|planner]
+                   [--owns "a/**,b/**"] [--engine claude|gemini] [--model sonnet] [--effort medium]
+                   [--team build] [--description "..."] [--template <t>] [--review-tags a,b] [--review-globs g]
+  devteam new-role --list-templates
+  devteam schema <report|review|plan>       print a JSON schema
+  devteam hook <pre-bash|pre-edit|subagent-start|subagent-stop|session-start>   (stdin: hook JSON)
+`;
+
+async function main(argv) {
+  const { parseFlags, die, readText } = await lib('util.mjs');
+  const [cmd, sub, ...more] = argv;
+  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') { process.stdout.write(HELP); return 0; }
+
+  if (cmd === 'hook') {
+    const { runHook } = await lib('hooks.mjs');
+    let input = {};
+    try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { return 0; }
+    return runHook(sub, input);
+  }
+
+  if (cmd === 'init') {
+    const { flags } = parseFlags([sub, ...more].filter((x) => x !== undefined));
+    const { initProject } = await lib('init.mjs');
+    const r = initProject({ stack: flags.stack || 'ts', sandbox: !flags['no-sandbox'], force: !!flags.force });
+    console.log(`devteam init in ${r.root}\n` + r.actions.map((a) => '  ' + a).join('\n'));
+    return 0;
+  }
+
+  if (cmd === 'config') {
+    const { effectiveConfig } = await lib('config.mjs');
+    const cfg = effectiveConfig();
+    const { flags } = parseFlags([sub, ...more].filter((x) => x !== undefined));
+    if (flags.json) { console.log(JSON.stringify(cfg, null, 2)); return 0; }
+    console.log(`project configured: ${cfg.project_configured}   base: ${cfg.base_branch}   parallel: claude=${cfg.parallel.claude} gemini=${cfg.parallel.gemini}   fix loop: ${cfg.fix_loop_max}`);
+    console.log(`gemini: ${cfg.gemini.enabled ? `on (review ${cfg.gemini.review_model}, bulk ${cfg.gemini.bulk_model}, overflow ${cfg.gemini.overflow_model})` : 'off'}`);
+    for (const r of Object.values(cfg.roles)) {
+      console.log(`  ${r.enabled ? ' ' : 'x'} ${r.name.padEnd(20)} ${r.kind.padEnd(11)} ${r.engine.padEnd(6)} ${`${r.model}/${r.effort}`.padEnd(14)} ${r.local ? '[local] ' : ''}${(r.owns || []).join(' ')}`);
+    }
+    return 0;
+  }
+
+  if (cmd === 'lint') {
+    const { lintPlugin, lintProject } = await lib('lint.mjs');
+    const { worktreeRoot } = await lib('util.mjs');
+    const { flags } = parseFlags([sub, ...more].filter((x) => x !== undefined));
+    const problems = [...lintPlugin(), ...(flags.project ? lintProject(worktreeRoot() || process.cwd()) : [])];
+    problems.forEach((p) => console.log(p));
+    const errors = problems.filter((p) => p.startsWith('error'));
+    console.log(`devteam lint: ${errors.length} error(s), ${problems.length - errors.length} warning(s)`);
+    return errors.length ? 1 : 0;
+  }
+
+  if (cmd === 'run') {
+    const R = await lib('run.mjs');
+    const { appendLedger } = await lib('util.mjs');
+    const { flags, rest } = parseFlags(more);
+    switch (sub) {
+      case 'new': console.log(R.newRun(rest[0])); return 0;
+      case 'current': { const c = R.currentRun(); if (!c) return die('no current run', 1); console.log(c); return 0; }
+      case 'status': console.log(R.runStatus(R.resolveRunDir(rest[0]), { brief: !!flags.brief })); return 0;
+      case 'epic': console.log(JSON.stringify(R.ensureEpicBranch(R.resolveRunDir(rest[0])))); return 0;
+      case 'args': console.log(JSON.stringify(R.workflowArgs(R.resolveRunDir(rest[0]), rest[1] || 'build', flags))); return 0;
+      case 'ledger': appendLedger(R.resolveRunDir(rest[0]), rest[1] || 'note', rest.slice(2).join(' ')); return 0;
+      case 'feedback': {
+        const run = R.resolveRunDir(rest[0]);
+        const text = rest[2] === '-' || !rest[2] ? fs.readFileSync(0, 'utf8') : readText(rest[2]);
+        fs.mkdirSync(R.taskDir(run, rest[1]), { recursive: true });
+        fs.writeFileSync(path.join(R.taskDir(run, rest[1]), 'feedback.md'), text);
+        return 0;
+      }
+      case 'collect': console.log(JSON.stringify(R.collect(R.resolveRunDir(rest[0]), { prune: !!flags.prune }), null, 2)); return 0;
+      default: process.stdout.write(HELP); return 1;
+    }
+  }
+
+  if (cmd === 'plan') {
+    const R = await lib('run.mjs');
+    const { checkPlanFile } = await lib('plan.mjs');
+    const { effectiveConfig } = await lib('config.mjs');
+    const { mainRoot } = await lib('util.mjs');
+    const { rest } = parseFlags(more);
+    const run = R.resolveRunDir(rest[0]);
+    const r = checkPlanFile(run, effectiveConfig(mainRoot(run)), { write: sub === 'check' });
+    r.errors.forEach((e) => console.log(`error: ${e}`));
+    r.warnings.forEach((w) => console.log(`warn: ${w}`));
+    if (r.ok) {
+      console.log(`plan ok: ${r.plan.tasks.length} tasks in ${r.plan.waves.length} waves`);
+      r.plan.waves.forEach((w, i) => console.log(`  wave ${i + 1}: ${w.map((id) => `${id}(${r.plan.tasks.find((t) => t.id === id).role})`).join('  ')}`));
+      if (r.plan.deps_prep.length) console.log(`  deps to install before wave 1: ${r.plan.deps_prep.join(' ')}`);
+    }
+    return r.ok ? 0 : 1;
+  }
+
+  if (cmd === 'task') {
+    const R = await lib('run.mjs');
+    const T = await lib('task.mjs');
+    const { flags, rest } = parseFlags(more);
+    const run = R.resolveRunDir(rest[0]);
+    if (sub === 'start') {
+      const r = T.startTask(run, rest[1], { role: flags.role, allowMain: !!flags['allow-main'], engine: flags.engine || 'claude' });
+      process.stdout.write(r.brief);
+      return 0;
+    }
+    if (sub === 'reset') {
+      for (const id of rest.slice(1)) T.resetTask(run, id);
+      console.log(`reset ${rest.slice(1).join(', ')}`);
+      return 0;
+    }
+    if (sub === 'brief') {
+      const { effectiveConfig } = await lib('config.mjs');
+      const { mainRoot } = await lib('util.mjs');
+      const plan = R.loadPlan(run);
+      const task = plan.tasks.find((t) => t.id === rest[1]);
+      if (!task) return die(`task ${rest[1]} not in plan`);
+      process.stdout.write(T.renderBrief(run, task, flags.role || task.role, { allowed: task.files }, effectiveConfig(mainRoot(run)), plan, null));
+      return 0;
+    }
+    process.stdout.write(HELP); return 1;
+  }
+
+  if (cmd === 'commit') {
+    const T = await lib('task.mjs');
+    const msg = [sub, ...more].filter((x) => x !== undefined && !x.startsWith('--')).join(' ');
+    const r = T.commitTask(msg);
+    console.log(r.committed ? `committed ${r.head.slice(0, 12)} (${r.files.length} files)` : `nothing to commit (HEAD ${r.head.slice(0, 12)})`);
+    return 0;
+  }
+
+  if (cmd === 'gate') {
+    const G = await lib('gate.mjs');
+    const { flags } = parseFlags([sub, ...more].filter((x) => x !== undefined));
+    const r = G.runGate({ level: flags.level || 'fast', only: flags.only, skipOwnership: !!flags['no-ownership'] });
+    console.log(flags.json ? JSON.stringify(r, null, 2) : G.formatGate(r));
+    return r.pass ? 0 : 1;
+  }
+
+  if (cmd === 'merge') {
+    const M = await lib('merge.mjs');
+    const R = await lib('run.mjs');
+    const { flags, rest } = parseFlags([sub, ...more].filter((x) => x !== undefined));
+    const run = flags.run ? R.resolveRunDir(flags.run) : null;
+    const r = M.mergeBranch(rest[0], { runDir: run, taskId: flags.task, gate: flags.gate || 'fast' });
+    console.log(JSON.stringify(r, null, 2));
+    return r.status === 'merged' ? 0 : 3;
+  }
+
+  if (cmd === 'new-role') {
+    const N = await lib('newrole.mjs');
+    const { flags, rest } = parseFlags([sub, ...more].filter((x) => x !== undefined));
+    if (flags['list-templates']) { console.log(N.listRoleTemplates().join('\n')); return 0; }
+    const r = N.newRole(rest[0], flags);
+    r.written.forEach((w) => console.log(`wrote ${w}`));
+    r.problems.forEach((p) => console.log(p));
+    return r.problems.some((p) => p.startsWith('error')) ? 1 : 0;
+  }
+
+  if (cmd === 'schema') {
+    const { PLUGIN_ROOT } = await lib('util.mjs');
+    const p = path.join(PLUGIN_ROOT, 'templates', 'schemas', `${sub}.schema.json`);
+    if (!fs.existsSync(p)) return die(`no schema "${sub}" (report, review, plan)`);
+    process.stdout.write(fs.readFileSync(p, 'utf8'));
+    return 0;
+  }
+
+  if (cmd === 'version' || cmd === '--version') {
+    const { PLUGIN_ROOT, readJSON } = await lib('util.mjs');
+    console.log(readJSON(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json')).version);
+    return 0;
+  }
+  process.stdout.write(HELP);
+  return 1;
+}
+
+main(process.argv.slice(2)).then(
+  (code) => process.exit(code ?? 0),
+  (e) => { process.stderr.write(`devteam: ${e.message}\n`); process.exit(1); },
+);

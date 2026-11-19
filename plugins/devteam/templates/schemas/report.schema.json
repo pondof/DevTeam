@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": { "type": "string" },
+    "status": { "type": "string", "enum": ["done", "blocked", "needs_contract_change", "failed"] },
+    "summary": { "type": "string", "description": "2-4 sentences a reviewer can trust: what changed and why" },
+    "branch": { "type": "string" },
+    "head_sha": { "type": "string" },
+    "worktree": { "type": "string" },
+    "files_changed": { "type": "array", "items": { "type": "string" } },
+    "commands_run": {
+      "type": "array",
+      "items": { "type": "object", "properties": { "cmd": { "type": "string" }, "exit_code": { "type": "integer" } }, "required": ["cmd", "exit_code"] }
+    },
+    "tests_added": { "type": "array", "items": { "type": "string" } },
+    "deps_requested": { "type": "array", "items": { "type": "string" } },
+    "contract_change_request": { "type": "string" },
+    "decisions": { "type": "array", "items": { "type": "string" } },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["task_id", "status", "summary", "branch", "head_sha", "worktree", "files_changed", "commands_run", "contract_change_request"]
+}

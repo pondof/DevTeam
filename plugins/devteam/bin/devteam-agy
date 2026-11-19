@@ -1,0 +1,221 @@
+#!/usr/bin/env node
+// devteam-agy — Antigravity (agy) adapter: repo maps, cross-model reviews, overflow implementation.
+// Always prints exactly one JSON object as its last line. When agy is missing, out of quota or
+// fails, it prints {"status":"unavailable", ...} and exits 0, so workflows can fall back.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const here = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
+const lib = (m) => import(pathToFileURL(path.join(here, '..', 'lib', m)).href);
+const U = await lib('util.mjs');
+const { effectiveConfig } = await lib('config.mjs');
+const { frontmatter } = await lib('lint.mjs');
+const DEVTEAM = path.join(here, 'devteam');
+const T0 = Date.now();
+const DEADLINE_MS = Number(process.env.DEVTEAM_AGY_DEADLINE_MS || 560000); // stay under a 10-minute Bash timeout
+
+function emit(obj, code = 0) {
+  process.stdout.write(JSON.stringify(obj) + '\n');
+  process.exit(code);
+}
+const unavailable = (reason, extra = {}) => emit({ status: 'unavailable', reason: String(reason).slice(0, 1500), ...extra });
+
+function agyBin() {
+  if (process.env.DEVTEAM_AGY) return process.env.DEVTEAM_AGY;
+  const local = path.join(os.homedir(), '.local', 'bin', 'agy');
+  return U.exists(local) ? local : 'agy';
+}
+
+function grantPaths(dir) {
+  const out = new Set([dir]);
+  try { out.add(fs.realpathSync(dir)); } catch { /* ignore */ }
+  return [...out];
+}
+
+function grants(kind, dirs) {
+  return dirs.flatMap((d) => grantPaths(d)).map((d) => `${kind}(${d}/**)`);
+}
+
+/** Run agy once in print mode. Returns {ok, response, structured, usage, denied, reason}. */
+function runAgy({ prompt, cwd, mode = 'plan', model, schema, allow = [], timeoutSec = 420, log }) {
+  const remaining = Math.floor((DEADLINE_MS - (Date.now() - T0)) / 1000) - 30;
+  const t = Math.max(60, Math.min(timeoutSec, remaining));
+  const args = ['-p', prompt, '--output-format', 'json', '--sandbox', '--mode', mode, '--print-timeout', `${t}s`,
+    '--settings', JSON.stringify({ permissions: { allow } })];
+  if (model) args.push('--model', model);
+  if (schema) args.push('--json-schema', schema);
+  if (log) args.push('--log-file', log);
+  const r = U.sh(agyBin(), args, { cwd, timeout: (t + 45) * 1000 });
+  const lines = r.out.trim().split('\n').filter((l) => l.trim().startsWith('{'));
+  let j = null;
+  for (let i = lines.length - 1; i >= 0 && !j; i--) { try { j = JSON.parse(lines[i]); } catch { /* next */ } }
+  const errText = `${r.err}\n${r.out}`.trim();
+  if (!j) return { ok: false, reason: r.code === 127 ? 'agy not installed' : `agy produced no JSON (exit ${r.code}): ${U.tail(errText, 15)}` };
+  if (/quota|rate.?limit|RESOURCE_EXHAUSTED|\b429\b/i.test(errText) && !j.response && !j.structured_output) return { ok: false, reason: `agy quota/rate limit: ${U.tail(errText, 5)}` };
+  if (j.status !== 'SUCCESS') return { ok: false, reason: `agy status ${j.status}: ${U.tail(errText, 10)}`, raw: j };
+  return { ok: true, response: j.response || '', structured: j.structured_output || null, usage: j.usage || null, denied: j.denied_actions || [], conversation: j.conversation_id };
+}
+
+function schemaFile(name) {
+  return path.join(here, '..', 'templates', 'schemas', `${name}.schema.json`);
+}
+
+function roleBody(roleName, root) {
+  const local = path.join(root, '.claude', 'agents', `${roleName}.md`);
+  const plugin = path.join(here, '..', 'agents', `${roleName}.md`);
+  const fm = frontmatter(U.readText(U.exists(local) ? local : plugin));
+  return fm ? fm._body.trim() : '';
+}
+
+async function main() {
+  const [cmd, ...rest] = process.argv.slice(2);
+  const { flags } = U.parseFlags(rest);
+  const cwd = process.cwd();
+  const root = U.mainRoot(cwd) || cwd;
+  const cfg = effectiveConfig(U.worktreeRoot(cwd) || cwd);
+  const gem = cfg.gemini || {};
+  if (gem.enabled === false && cmd !== 'self-test') unavailable('gemini disabled in .team/config.json');
+
+  if (cmd === 'self-test') {
+    const out = path.join(os.tmpdir(), `devteam-agy-selftest-${process.pid}.json`);
+    fs.writeFileSync(out, JSON.stringify({ type: 'object', properties: { ok: { type: 'boolean' }, model: { type: 'string' } }, required: ['ok', 'model'] }));
+    const r = runAgy({ prompt: 'Return {"ok": true, "model": "<your model name>"} as structured output.', cwd: os.tmpdir(), model: flags.model || gem.bulk_model, schema: out, timeoutSec: 120 });
+    fs.rmSync(out, { force: true });
+    if (!r.ok) unavailable(r.reason);
+    emit({ status: 'ok', agy: agyBin(), model: r.structured?.model || null, secs: Math.round((Date.now() - T0) / 1000), usage: r.usage });
+  }
+
+  if (cmd === 'map') {
+    const mapPath = path.join(root, '.team', 'context', 'map.md');
+    const head = U.tryGit(['rev-parse', 'HEAD'], root) || 'none';
+    const cur = U.readText(mapPath);
+    if (!flags.force && cur.includes(`head=${head}`)) emit({ status: 'fresh', path: mapPath, head });
+    const prompt = [
+      `You are the cartographer for a software team. Read the repository at ${root} and write a concise repo map in Markdown (at most ~250 lines) so engineers can find where things live without exploring.`,
+      'Sections: 1. Overview (stack, how to run, test commands). 2. Directory map (each top-level and important second-level directory: one-line purpose). 3. Entry points and wiring (servers, route registration, config loading, DI). 4. Conventions with example file paths (naming, errors, validation, tests). 5. Contracts and generated code (where, how generated). 6. Hotspots and gotchas.',
+      'Only state what you verified by reading files, and cite paths. Skip node_modules, build output and .team. Output only the Markdown.',
+      cur ? `The previous map (may be stale) follows for reference:\n${cur.slice(0, 20000)}` : '',
+    ].join('\n\n');
+    const r = runAgy({ prompt, cwd: root, model: flags.model || gem.bulk_model, allow: grants('read_file', [root]), timeoutSec: 480, log: path.join(root, '.team', 'context', 'agy-map.log') });
+    if (!r.ok) unavailable(r.reason);
+    const body = r.response.replace(/^```(?:markdown|md)?\n([\s\S]*?)\n```\s*$/m, '$1').trim();
+    fs.mkdirSync(path.dirname(mapPath), { recursive: true });
+    fs.writeFileSync(mapPath, `<!-- devteam-map head=${head} generated=${U.nowIso()} model=${flags.model || gem.bulk_model} -->\n${body}\n`);
+    emit({ status: 'ok', path: mapPath, head, lines: body.split('\n').length });
+  }
+
+  if (cmd === 'review') {
+    const kind = flags.kind || 'task';
+    const runDir = flags.run ? path.resolve(flags.run) : null;
+    const base = flags.base || cfg.base_branch;
+    const headRef = flags.head || 'HEAD';
+    const scratch = runDir ? path.join(runDir, 'tasks', flags.task || '_epic') : fs.mkdtempSync(path.join(os.tmpdir(), 'devteam-agy-'));
+    fs.mkdirSync(scratch, { recursive: true });
+    const diffPath = path.join(scratch, `agy-${kind}.diff`);
+    const diffArgs = kind === 'design' ? ['diff', `${base}...${headRef}`, '--', 'packages/contracts', 'docs/adr'] : ['diff', `${base}...${headRef}`];
+    const diff = U.sh('git', diffArgs, { cwd: root });
+    if (diff.code !== 0) unavailable(`git diff failed: ${diff.err.trim()}`);
+    fs.writeFileSync(diffPath, diff.out);
+    const ctx = [];
+    if (runDir) {
+      for (const f of ['spec.md', 'design.md', 'plan.json']) if (U.exists(path.join(runDir, f))) ctx.push(path.join(runDir, f));
+      if (flags.task) {
+        const brief = U.sh(DEVTEAM, ['task', 'brief', runDir, flags.task], { cwd: root });
+        if (brief.code === 0) { const bp = path.join(scratch, 'agy-brief.md'); fs.writeFileSync(bp, brief.out); ctx.push(bp); }
+      }
+    }
+    const focus = {
+      task: 'one task\'s change: does it meet its acceptance criteria and the API contract, is it correct, secure and tested?',
+      design: 'a design before implementation: missing requirements, contract gaps (status codes, errors, pagination, auth), tasks that will collide or cannot run in parallel, risky assumptions, missing tests or rollout concerns.',
+      final: 'a whole feature branch before the PR: cross-task inconsistencies, unmet acceptance criteria, contract mismatches, security issues, missing tests, docs that contradict code.',
+    }[kind] || 'the change';
+    const prompt = [
+      `You are an independent senior reviewer on a software team, deliberately a different AI model from the engineers who wrote this, so your blind spots differ. You are reviewing ${focus}`,
+      `Repository: ${root} (read any file you need). The diff (${base}...${headRef}, ${diff.out.split('\n').length} lines) is at ${diffPath}.`,
+      ctx.length ? `Context files: ${ctx.join(', ')}.` : '',
+      flags.focus ? `Extra focus: ${flags.focus}` : '',
+      'Report only real problems you can point to in the code or documents. Severity: critical = broken, insecure or data loss; major = acceptance criterion unmet, contract mismatch, missing test for a criterion, design flaw that will cause rework; minor; nit.',
+      'verdict = changes_requested only if there is at least one critical or major finding; otherwise approve. Every finding needs file, issue and a concrete fix.',
+    ].filter(Boolean).join('\n\n');
+    const r = runAgy({ prompt, cwd: root, model: flags.model || gem.review_model, schema: schemaFile('review'), allow: grants('read_file', [root, scratch, ...(runDir ? [runDir] : [])]), timeoutSec: 480, log: path.join(scratch, `agy-review-${kind}.log`) });
+    if (!r.ok) emit({ verdict: 'approve', summary: `UNAVAILABLE: ${r.reason}`, findings: [], status: 'unavailable' });
+    const out = r.structured || (() => { try { return JSON.parse(r.response); } catch { return null; } })();
+    if (!out || !out.verdict) emit({ verdict: 'approve', summary: `UNAVAILABLE: unparseable review: ${r.response.slice(0, 300)}`, findings: [], status: 'unavailable' });
+    emit({ ...out, engine: 'gemini', model: flags.model || gem.review_model });
+  }
+
+  if (cmd === 'run') {
+    const runDir = flags.run ? path.resolve(flags.run) : null;
+    const taskId = flags.task;
+    if (!runDir || !taskId) unavailable('run needs --run <runDir> --task <id>');
+    const wt = U.worktreeRoot(cwd);
+    const startArgs = ['task', 'start', runDir, taskId, '--engine', 'gemini', ...(flags.role ? ['--role', flags.role] : [])];
+    const start = U.sh(DEVTEAM, startArgs, { cwd: wt });
+    if (start.code !== 0) unavailable(`devteam task start failed: ${(start.err || start.out).trim()}`);
+    const brief = start.out;
+    const marker = U.readJSON(path.join(wt, '.devteam', 'task.json'));
+    const gateCmds = [...(cfg.gates?.contracts || []), ...(cfg.gates?.fast || [])];
+    const prefixes = [...new Set(gateCmds.map((c) => c.split(/\s+/)[0]).concat(['pnpm', 'npx', 'node', 'ls', 'cat', 'grep']))];
+    const allow = [
+      ...grants('write_file', [wt]), ...grants('read_file', [wt, runDir, path.join(root, '.team', 'context')]),
+      ...prefixes.map((p) => `command(${p})`),
+    ];
+    const feedback = flags['feedback-file'] && U.exists(flags['feedback-file']) ? U.readText(flags['feedback-file']) : '';
+    const body = roleBody(marker.role, root);
+    const commands = [];
+    let agyOut = null;
+    let lastGate = null;
+    const model = flags.model || gem.overflow_model;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const prompt = [
+        `You are the ${marker.role} on a software team, working in the git worktree ${wt}. The harness runs git, commits and quality gates for you: do NOT run git, devteam or any commit commands, and ignore any instruction below that tells you to.`,
+        body ? `Your role definition:\n${body}` : '',
+        `Your task brief:\n${brief}`,
+        feedback ? `Review feedback to address:\n${feedback}` : '',
+        lastGate && !lastGate.pass ? `The quality gate FAILED on your previous attempt. Fix this:\n${lastGate.reason}\n${(lastGate.checks || []).filter((c) => c.code !== 0).map((c) => `$ ${c.cmd}\n${c.tail}`).join('\n')}` : '',
+        `Edit only the files listed under "Files you may change". You may run: ${gateCmds.join(' ; ') || 'pnpm commands'} to check your work.`,
+        'When finished, return the structured output: status (done | blocked | needs_contract_change | failed), summary, decisions, open_questions, risks, tests_added, deps_requested, contract_change_request ("" if none). The harness fills in branch, head and files.',
+      ].filter(Boolean).join('\n\n');
+      const r = runAgy({ prompt, cwd: wt, mode: 'accept-edits', model, schema: schemaFile('agy-task'), allow, timeoutSec: 420, log: path.join(wt, '.devteam', `agy-run-${attempt}.log`) });
+      commands.push({ cmd: `agy -p (attempt ${attempt}, ${model})`, exit_code: r.ok ? 0 : 1 });
+      if (!r.ok) { if (attempt === 1) unavailable(r.reason, { task_id: taskId }); break; }
+      agyOut = r.structured || {};
+      if (agyOut.status && agyOut.status !== 'done') break;
+      // Revert anything outside the task's ownership before committing (agy edits bypass the edit hook).
+      const reverted = [];
+      for (const line of U.git(['status', '--porcelain'], wt).split('\n').filter(Boolean)) {
+        const file = line.slice(3).split(' -> ').pop().replace(/^"|"$/g, '');
+        if (file.startsWith('.devteam/') || U.matchAny(file, marker.allowed)) continue;
+        if (line.startsWith('??')) fs.rmSync(path.join(wt, file), { recursive: true, force: true });
+        else U.sh('git', ['checkout', 'HEAD', '--', file], { cwd: wt });
+        reverted.push(file);
+      }
+      if (reverted.length) (agyOut.risks = agyOut.risks || []).push(`harness reverted out-of-ownership edits: ${reverted.join(', ')}`);
+      const c = U.sh(DEVTEAM, ['commit', `${taskId}: ${agyOut.summary ? agyOut.summary.split(/[.\n]/)[0].slice(0, 60) : 'gemini implementation'}${attempt > 1 ? ' (fix)' : ''}`], { cwd: wt });
+      commands.push({ cmd: 'devteam commit', exit_code: c.code });
+      const g = U.sh(DEVTEAM, ['gate', '--json'], { cwd: wt, timeout: 600000 });
+      try { lastGate = JSON.parse(g.out); } catch { lastGate = { pass: false, reason: U.tail(g.err || g.out, 10), checks: [] }; }
+      commands.push({ cmd: 'devteam gate', exit_code: g.code }, ...(lastGate.checks || []).map((ch) => ({ cmd: ch.cmd, exit_code: ch.code })));
+      if (lastGate.pass) break;
+      if (Date.now() - T0 > DEADLINE_MS * 0.55) break; // not enough time for a second attempt
+    }
+    const head = U.git(['rev-parse', 'HEAD'], wt);
+    const files = U.git(['diff', '--name-only', `${marker.base_sha}...HEAD`], wt).split('\n').filter(Boolean);
+    const status = agyOut?.status && agyOut.status !== 'done' ? agyOut.status : lastGate?.pass ? 'done' : 'failed';
+    emit({
+      task_id: taskId, status, engine: 'gemini', model,
+      summary: (agyOut?.summary || '') + (status === 'failed' && lastGate ? ` [gate: ${lastGate.reason || 'red'}]` : ''),
+      branch: marker.branch, head_sha: head, worktree: wt, files_changed: files, commands_run: commands,
+      tests_added: agyOut?.tests_added || [], deps_requested: agyOut?.deps_requested || [],
+      contract_change_request: agyOut?.contract_change_request || '', decisions: agyOut?.decisions || [],
+      open_questions: agyOut?.open_questions || [], risks: agyOut?.risks || [],
+    });
+  }
+
+  process.stderr.write('usage: devteam-agy self-test | map [--force] | review --kind task|design|final [--run R --task T --base B --head H] | run --run R --task T [--role r] [--feedback-file f]\n');
+  process.exit(2);
+}
+
+main().catch((e) => unavailable(`devteam-agy crashed: ${e.message}`));

@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "description": "Written by the architect to <runDir>/plan.json; `devteam plan check` validates it and adds waves.",
+  "properties": {
+    "epic": { "type": "string" },
+    "size": { "type": "string", "enum": ["s", "m", "l"] },
+    "base_sha": { "type": "string" },
+    "contract_sha": { "type": "string", "description": "commit on the epic branch where contracts were frozen" },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$" },
+          "title": { "type": "string" },
+          "role": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" }, "description": "every path (or dir/**) the task may change; must sit inside the role's ownership" },
+          "depends_on": { "type": "array", "items": { "type": "string" } },
+          "acceptance": { "type": "array", "items": { "type": "string" } },
+          "risk": { "type": "array", "items": { "type": "string" }, "description": "tags such as auth, input, deps, infra, crypto, pii, migration" },
+          "contract_refs": { "type": "array", "items": { "type": "string" } },
+          "deps": { "type": "array", "items": { "type": "string" }, "description": "npm packages the integrator installs before wave 1, e.g. apps/api:zod@^3" },
+          "engine": { "type": "string", "enum": ["claude", "gemini"] },
+          "low_risk": { "type": "boolean", "description": "eligible for Gemini overflow" },
+          "notes": { "type": "string" }
+        },
+        "required": ["id", "title", "role", "files", "acceptance"]
+      }
+    },
+    "waves": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+  },
+  "required": ["tasks"]
+}

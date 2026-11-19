@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "status": { "type": "string", "enum": ["done", "blocked", "needs_contract_change", "failed"] },
+    "summary": { "type": "string" },
+    "decisions": { "type": "array", "items": { "type": "string" } },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "tests_added": { "type": "array", "items": { "type": "string" } },
+    "deps_requested": { "type": "array", "items": { "type": "string" } },
+    "contract_change_request": { "type": "string" }
+  },
+  "required": ["status", "summary", "contract_change_request"]
+}

@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(devteam *)",
+      "Bash(devteam-agy *)",
+      "Bash(pnpm *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git rev-parse*)",
+      "Bash(git merge-base*)",
+      "Bash(docker compose *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.production)",
+      "Read(**/.env)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(terraform apply*)",
+      "Bash(terraform destroy*)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "excludedCommands": ["docker *", "agy *", "devteam-agy *", "gh *"],
+    "network": {
+      "allowedDomains": [
+        "registry.npmjs.org", "*.npmjs.org", "github.com", "*.github.com", "*.githubusercontent.com",
+        "semgrep.dev", "*.semgrep.dev", "api.osv.dev", "osv-vulnerabilities.storage.googleapis.com"
+      ],
+      "allowLocalBinding": true
+    }
+  }
+}
