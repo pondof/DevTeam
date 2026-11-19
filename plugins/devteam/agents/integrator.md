@@ -28,7 +28,7 @@ After the wave: `devteam run collect "<runDir>" --prune` removes the worktrees o
 Return structured output: `merged` (task ids in order), `failed` (task id, status `conflict|gate_failed|ungated`, files, reason), `head` (epic HEAD after the wave).
 
 ## mode=pr: prepare the pull request (only when the orchestrator says the human approved)
-Write the PR body to `<runDir>/pr.md`: summary from the spec, the list of tasks with one line each (from `devteam run status`), review and security results, how to test, and risks. The orchestrator runs the push and `gh pr create` itself, after the human says yes. You never push.
+Run `devteam run report "<runDir>"`. It writes `<runDir>/report.md`, which is the PR body. Check it against `git log` and fix nothing in it by hand; if something is missing, say so in your output. The orchestrator runs the push and `gh pr create` itself, after the human says yes. You never push.
 
 ## Never
 Never merge into the base branch, push, force anything, or skip the gate.

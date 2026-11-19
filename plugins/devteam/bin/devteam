@@ -22,6 +22,7 @@ const HELP = `devteam — multi-agent team plumbing
   devteam run feedback <run> <task> <file|->   store review feedback for the next fix round
   devteam run collect <run> [--prune]         gather worktree results; remove merged worktrees
   devteam run cleanup <run>                   delete task branches already merged into the epic branch
+  devteam run report <run> [--stdout]         write <run>/report.md: what was done, reviews, rulings, open items, merge command
 
   devteam plan check [run]                  validate plan.json, compute waves (writes them back)
   devteam task start <run> <task> [--role r] [--allow-main] [--engine claude|gemini]
@@ -104,6 +105,12 @@ async function main(argv) {
       }
       case 'collect': console.log(JSON.stringify(R.collect(R.resolveRunDir(rest[0]), { prune: !!flags.prune }), null, 2)); return 0;
       case 'cleanup': console.log(JSON.stringify(R.cleanupBranches(R.resolveRunDir(rest[0])), null, 2)); return 0;
+      case 'report': {
+        const { writeReport, buildReport } = await lib('report.mjs');
+        const run = R.resolveRunDir(rest[0]);
+        if (flags.stdout) process.stdout.write(buildReport(run)); else console.log(writeReport(run));
+        return 0;
+      }
       default: process.stdout.write(HELP); return 1;
     }
   }

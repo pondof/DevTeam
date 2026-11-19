@@ -31,7 +31,7 @@ allowed-tools:
    Add `risk` tags honestly (auth, input, deps, infra, crypto, pii, secrets, payments, migration). They route the security, data and Gemini review lenses.
 5. `devteam plan check "$RUN"` must pass.
 6. `devteam run args "$RUN" build --mode quick` → **Workflow** `devteam:build` with that JSON object as `args`.
-7. On return: `devteam run collect "$RUN" --prune` and `devteam run cleanup "$RUN"` (removes merged task branches), then report in ≤ 5 lines: what changed, review verdicts, and the branch `team/<slug>`.
+7. On return: `devteam run collect "$RUN" --prune` and `devteam run cleanup "$RUN"` (removes merged task branches), then `devteam run report "$RUN"` (writes `<RUN>/report.md` for the human), then report in ≤ 5 lines: what changed, review verdicts, and the branch `team/<slug>`.
 8. AskUserQuestion: **Push and open PR** / **Keep local**. Push and `gh pr create` only on an explicit yes (same commands as `/devteam:feature` step 5).
 
 ## Reporting

@@ -61,10 +61,10 @@ You are the orchestrator for a full feature. Follow these steps in order. Keep c
 - Record rulings: `devteam run ledger "$RUN" ruling "<what> — <why> — <cost if wrong>"`.
 
 ## 5. PR → CHECKPOINT 3
-- Dispatch `devteam:integrator` with `DEVTEAM run=<RUN> task=- role=integrator mode=pr` to write `<RUN>/pr.md`.
+- `devteam run report "$RUN"` writes `<RUN>/report.md`: what was asked, what each task did, every review verdict, the rulings made without the human, open risks, files and commits, and the merge command. It is built from the run's files only, so it cannot invent anything. Give the human its path, and summarize it in five lines or fewer.
 - Show the human: tasks merged, test/QA status, final review verdicts, open risks, and `git log --oneline <base>..team/<slug> | head -20`.
 - AskUserQuestion: **Push and open PR** / **Keep local** (they review the branch themselves) / **More changes**.
-- Only on an explicit yes: `git push -u origin team/<slug>` then `gh pr create --base <base> --head team/<slug> --title "<title>" --body-file "$RUN/pr.md"`. Report the PR URL. The human merges it.
+- Only on an explicit yes: `git push -u origin team/<slug>` then `gh pr create --base <base> --head team/<slug> --title "<title>" --body-file "$RUN/report.md"`. Report the PR URL. The human merges it.
 - `devteam run ledger "$RUN" checkpoint "PR opened <url>"` (or "kept local").
 
 ## Recovery

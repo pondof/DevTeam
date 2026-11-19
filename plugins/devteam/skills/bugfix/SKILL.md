@@ -34,7 +34,7 @@ allowed-tools:
 6. Read `reproduction` in the result:
    - `not_reproduced`: show the evidence and ask the human for more detail.
    - The debugger names a different `owner_role`: update the task's role and files in plan.json, `devteam plan check`, `devteam run args ... --redo`, and run the build again. The owner resumes from the debugger's failing-test commit automatically.
-7. `devteam run collect "$RUN" --prune` and `devteam run cleanup "$RUN"`, then report in ≤ 5 lines: root cause, fix, test, branch. Then offer push/PR as `/devteam:quick` does.
+7. `devteam run collect "$RUN" --prune` and `devteam run cleanup "$RUN"` and `devteam run report "$RUN"` (writes `<RUN>/report.md` for the human), then report in ≤ 5 lines: root cause, fix, test, branch. Then offer push/PR as `/devteam:quick` does.
 
 ## Reporting
 Report only from the Workflow result and `devteam run status`. Never describe results, counts or merges before the Workflow tool has returned. While it runs there is nothing to report yet.

@@ -120,10 +120,10 @@ This writes the agent file (fixed sections: identity, ownership, start with `dev
 
 ## Debugging runbook
 
-Everything about a run lives in `.team/runs/<id>/` in the main checkout:
+Start with **`.team/runs/<id>/report.md`** (`devteam run report <run>`). It is a plain-language summary built only from the run files: what was asked, what each task did, every review verdict, the rulings made without you, open risks, files and commits, and the merge command. The skills write it before asking you to merge. Underneath, everything about a run lives in `.team/runs/<id>/` in the main checkout:
 
 ```
-run.json  spec.md  design.md  plan.json (tasks + waves)  ledger.md  pr.md
+run.json  spec.md  design.md  plan.json (tasks + waves)  ledger.md  report.md
 tasks/<id>/state.json        status, attempts, head, branch, worktree, gate result
 tasks/<id>/report.json       the engineer's structured report (captured by the stop hook)
 tasks/<id>/review-<role>-<n>.json   each review lens, each round

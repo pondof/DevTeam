@@ -437,3 +437,23 @@ test('init (ts) ignores the AGENTS.md that Next.js writes into apps', () => {
   fs.writeFileSync(path.join(dir, 'apps', 'web', 'AGENTS.md'), 'generated\n');
   assert.equal(g(dir, 'status', '--porcelain', '--', 'apps'), '');
 });
+
+test('run report: human-readable summary built only from run artifacts', () => {
+  const { dir, runDir, wt } = setupTask();
+  fs.writeFileSync(path.join(runDir, 'spec.md'), '# Spec: Demo feature\n\n## Problem\nUsers cannot do X.\n\n## Acceptance criteria\n- AC1: Given A When B Then C\n');
+  run(['task', 'start', runDir, 'T1'], { cwd: wt });
+  fs.writeFileSync(path.join(wt, 'apps/api/src/index.ts'), 'export const x = 9;\n');
+  run(['commit', 'T1: x=9'], { cwd: wt });
+  run(['gate'], { cwd: wt });
+  const td = path.join(runDir, 'tasks', 'T1');
+  fs.writeFileSync(path.join(td, 'report.json'), JSON.stringify({ status: 'done', summary: 'Changed x to 9.', files_changed: ['apps/api/src/index.ts'], tests_added: [], decisions: ['kept it simple'], risks: ['none really'] }));
+  fs.writeFileSync(path.join(td, 'review-code-reviewer-1.json'), JSON.stringify({ verdict: 'approve', summary: 'ok', findings: [{ severity: 'minor', file: 'apps/api/src/index.ts', issue: 'magic number' }] }));
+  run(['run', 'ledger', runDir, 'ruling', 'R1: chose 9 — spec says so — cost if wrong: trivial'], { cwd: dir });
+  assert.equal(run(['merge', 'task/demo/T1', '--run', runDir, '--task', 'T1'], { cwd: dir }).status, 0);
+  const p = run(['run', 'report', runDir], { cwd: dir }).stdout.trim();
+  const md = fs.readFileSync(p, 'utf8');
+  for (const want of ['# Demo feature', 'Users cannot do X.', 'AC1: Given A When B Then C', '### T1: api change', 'Changed x to 9.',
+    '| T1 | code-reviewer | approve | 0 | 1 |', 'R1: chose 9', 'magic number', 'none really', 'git checkout main && git merge --no-ff team/demo', 'merges cleanly']) {
+    assert.ok(md.includes(want), `report should contain: ${want}`);
+  }
+});
