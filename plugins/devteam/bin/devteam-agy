@@ -201,6 +201,7 @@ async function main() {
     const commands = [];
     let agyOut = null;
     let lastGate = null;
+    const harnessRisks = []; // facts the harness observed, kept across attempts
     const model = flags.model || gem.overflow_model;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const prompt = [
@@ -218,15 +219,20 @@ async function main() {
       agyOut = r.structured || {};
       if (agyOut.status && agyOut.status !== 'done') break;
       // Revert anything outside the task's ownership before committing (agy edits bypass the edit hook).
+      // Parse raw porcelain output: U.git() trims, which would eat the leading space of " M path".
+      // --untracked-files=all lists files inside new directories instead of collapsing them to "dir/".
       const reverted = [];
-      for (const line of U.git(['status', '--porcelain', '--untracked-files=all'], wt).split('\n').filter(Boolean)) {
-        const file = line.slice(3).split(' -> ').pop().replace(/^"|"$/g, '');
+      const porcelain = U.sh('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: wt }).out;
+      for (const line of porcelain.split('\n').filter(Boolean)) {
+        const m = line.match(/^(..) (.+)$/);
+        if (!m) continue;
+        const file = m[2].split(' -> ').pop().replace(/^"|"$/g, '');
         if (file.startsWith('.devteam/') || U.matchAny(file, marker.allowed)) continue;
-        if (line.startsWith('??')) fs.rmSync(path.join(wt, file), { recursive: true, force: true });
+        if (m[1] === '??') fs.rmSync(path.join(wt, file), { recursive: true, force: true });
         else U.sh('git', ['checkout', 'HEAD', '--', file], { cwd: wt });
         reverted.push(file);
       }
-      if (reverted.length) (agyOut.risks = agyOut.risks || []).push(`harness reverted out-of-ownership edits: ${reverted.join(', ')}`);
+      if (reverted.length) harnessRisks.push(`harness reverted out-of-ownership edits (attempt ${attempt}): ${reverted.join(', ')}`);
       const c = U.sh(DEVTEAM, ['commit', `${taskId}: ${agyOut.summary ? agyOut.summary.split(/[.\n]/)[0].slice(0, 60) : 'gemini implementation'}${attempt > 1 ? ' (fix)' : ''}`], { cwd: wt });
       commands.push({ cmd: 'devteam commit', exit_code: c.code });
       const g = U.sh(DEVTEAM, ['gate', '--json'], { cwd: wt, timeout: 600000 });
@@ -239,7 +245,7 @@ async function main() {
     const files = U.git(['diff', '--name-only', `${marker.base_sha}...HEAD`], wt).split('\n').filter(Boolean);
     // Never report success for a task that committed nothing (an empty tree is trivially green).
     const nothing = !files.length && (!agyOut?.status || agyOut.status === 'done');
-    if (nothing) (agyOut = agyOut || {}).risks = [...(agyOut.risks || []), 'no file changes reached the worktree; the task was not done'];
+    if (nothing) harnessRisks.push('no file changes reached the worktree; the task was not done');
     const status = agyOut?.status && agyOut.status !== 'done' ? agyOut.status : nothing ? 'failed' : lastGate?.pass ? 'done' : 'failed';
     emit({
       task_id: taskId, status, engine: 'gemini', model,
@@ -247,7 +253,7 @@ async function main() {
       branch: marker.branch, head_sha: head, worktree: wt, files_changed: files, commands_run: commands,
       tests_added: agyOut?.tests_added || [], deps_requested: agyOut?.deps_requested || [],
       contract_change_request: agyOut?.contract_change_request || '', decisions: agyOut?.decisions || [],
-      open_questions: agyOut?.open_questions || [], risks: agyOut?.risks || [],
+      open_questions: agyOut?.open_questions || [], risks: [...harnessRisks, ...(agyOut?.risks || [])],
     });
   }
 

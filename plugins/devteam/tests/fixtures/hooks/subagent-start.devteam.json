@@ -1,0 +1,9 @@
+{
+  "session_id": "a6d881a5-f424-47ad-b527-7b96151d044d",
+  "transcript_path": "{{HOME}}/.claude/projects/-private-tmp-devteam-hookcap-96987-repo/a6d881a5-f424-47ad-b527-7b96151d044d.jsonl",
+  "cwd": "{{CWD}}",
+  "prompt_id": "6f2ba34e-fe62-490d-b153-42ebc1cc204f",
+  "agent_id": "acdcb1b3dd66798c0",
+  "agent_type": "{{AGENT_TYPE}}",
+  "hook_event_name": "SubagentStart"
+}
