@@ -152,7 +152,10 @@ tasks/_epic/                 final reviews, QA
 ## Develop
 
 ```sh
-plugins/devteam/tests/run.sh          # fixture tests (temp git repos): scheduler, hooks, gate, merge, init, new-role
+plugins/devteam/tests/run.sh          # 40 tests in temp git repos: scheduler, gate, merge, init, new-role,
+                                      # hooks driven by REAL Claude Code payloads (tests/fixtures/hooks, transcripts),
+                                      # devteam-agy against a fake agy (tests/fixtures/fake-agy.mjs)
+plugins/devteam/tests/capture-hook-fixtures.sh   # re-capture real hook payloads after a Claude Code upgrade
 plugins/devteam/bin/devteam lint      # registry ↔ agents ↔ skills ↔ workflows consistency
 claude plugin validate plugins/devteam
 ```

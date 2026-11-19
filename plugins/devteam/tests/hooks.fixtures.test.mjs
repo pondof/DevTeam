@@ -196,3 +196,30 @@ test('hooks fail open on malformed input or a broken environment; ownership stil
   assert.equal(outside.status, 2);
   assert.match(outside.stderr, /backend-engineer owns/);
 });
+
+test('subagent-stop for the Gemini bridge follows report.worktree to the sibling worktree', () => {
+  const { dir, runDir } = project();
+  // the bridge's own (unused) Claude worktree, and the sibling worktree devteam-agy run worked in
+  const bridgeWt = path.join(dir, '.claude', 'worktrees', 'agent-bridge');
+  g(dir, 'worktree', 'add', '-q', '-b', 'worktree-agent-bridge', bridgeWt);
+  const gemWt = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'devteam-gemwt-')));
+  fs.rmSync(gemWt, { recursive: true });
+  g(dir, 'worktree', 'add', '-q', '-b', 'devteam-agy-B1', gemWt);
+  assert.equal(run(['task', 'start', runDir, 'B1', '--engine', 'gemini'], { cwd: gemWt }).status, 0);
+  fs.writeFileSync(path.join(gemWt, 'apps/api/src/index.ts'), 'export const x = 7;\n');
+  run(['commit', 'B1: gemini change'], { cwd: gemWt });
+  run(['gate'], { cwd: gemWt });
+  const report = { task_id: 'B1', status: 'done', summary: 'gemini did it', branch: 'task/fx/B1', head_sha: g(gemWt, 'rev-parse', 'HEAD'), worktree: gemWt, files_changed: ['apps/api/src/index.ts'], commands_run: [], contract_change_request: '' };
+  const trPath = path.join(dir, 'bridge-transcript.jsonl');
+  fs.writeFileSync(trPath, [
+    { type: 'user', message: { role: 'user', content: `[Workflow harness — computed task] DEVTEAM run=${runDir} task=B1 role=gemini-bridge mode=implement\nRun: devteam-agy run` } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', name: 'StructuredOutput', input: report }] } },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const r = hook('subagent-stop', fixture('subagent-stop.devteam.json', { CWD: bridgeWt, AGENT_TYPE: 'devteam:gemini-bridge', AGENT_TRANSCRIPT: trPath }));
+  assert.equal(r.status, 0, r.stderr);
+  const state = JSON.parse(fs.readFileSync(path.join(runDir, 'tasks', 'B1', 'state.json'), 'utf8'));
+  assert.equal(state.gates, 'pass', 'gate status recorded from the sibling worktree');
+  assert.equal(state.worktree, gemWt);
+  assert.equal(state.status, 'implemented');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(runDir, 'tasks', 'B1', 'report.json'), 'utf8')).summary, 'gemini did it');
+});

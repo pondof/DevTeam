@@ -134,9 +134,19 @@ export function subagentStop(input) {
   const { role } = agentRole(input);
   if (!role) return;
   const cwd = input.cwd || process.cwd();
-  const wt = worktreeRoot(cwd) || cwd;
-  const marker = readJSON(markerPath(wt), null);
+  let wt = worktreeRoot(cwd) || cwd;
+  let marker = readJSON(markerPath(wt), null);
   const tr = input.agent_transcript_path ? parseTranscript(input.agent_transcript_path) : { marker: null, structured: null };
+  // The Gemini bridge works in a sibling worktree outside the repo (devteam-agy run), so its own cwd has no
+  // marker: follow the report's worktree when it carries the marker for the same run and task.
+  const reported = tr.structured?.worktree;
+  if (!marker && reported && tr.marker && path.resolve(reported) !== path.resolve(wt)) {
+    const other = readJSON(markerPath(reported), null);
+    if (other && path.resolve(other.runDir) === path.resolve(tr.marker.run) && other.taskId === tr.marker.task) {
+      wt = reported;
+      marker = other;
+    }
+  }
   const runDir = marker?.runDir || tr.marker?.run || null;
   const taskId = marker?.taskId || (tr.marker ? (tr.marker.task === '-' ? '_epic' : tr.marker.task) : null);
   const mode = tr.marker?.mode || (marker ? 'implement' : 'adhoc');
