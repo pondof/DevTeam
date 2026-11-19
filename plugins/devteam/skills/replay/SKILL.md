@@ -18,7 +18,7 @@ allowed-tools:
    - **Fresh** (after a merge conflict, or when the approach was wrong): `devteam task reset "$RUN" <ids...>`, so the next start begins from the current epic branch.
 3. If the plan itself was wrong for that task (files, role, acceptance), fix `plan.json` first and run `devteam plan check "$RUN"`.
 4. `devteam run args "$RUN" build --tasks <ids,comma-separated> --redo --final false` → **Workflow** `devteam:build`. Add `--overflow` to let Gemini take a `low_risk` task.
-5. `devteam run collect "$RUN" --prune` and report the result in ≤ 5 lines.
+5. `devteam run collect "$RUN" --prune` and `devteam run cleanup "$RUN"` (removes merged task branches) and report the result in ≤ 5 lines.
 
 ## Reporting
 Report only from the Workflow result and `devteam run status`. Never describe results, counts or merges before the Workflow tool has returned. While it runs there is nothing to report yet.

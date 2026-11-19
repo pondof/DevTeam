@@ -53,7 +53,7 @@ You are the orchestrator for a full feature. Follow these steps in order. Keep c
 - `devteam run args "$RUN" build` → call **Workflow** `devteam:build` with that object as `args`.
 - If the human mentioned the Claude limit is close, add `--overflow` to route `low_risk` tasks to Gemini.
 - On return:
-  - `devteam run collect "$RUN" --prune`, then `devteam run status "$RUN"`.
+  - `devteam run collect "$RUN" --prune` and `devteam run cleanup "$RUN"` (removes merged task branches), then `devteam run status "$RUN"`.
   - **blocked / needs_contract_change**: follow `/devteam:contract-change` for those tasks, then rebuild only them: `devteam run args "$RUN" build --tasks T3,T5`.
   - **review_failed / merge_conflict / merge_gate_failed**: show the diagnosis in two lines and offer `/devteam:replay <task>` (fresh attempt), or a ruling (accept with known issues, recorded in the ledger).
   - **skipped**: these re-run automatically on the next build call once their dependencies merge.
