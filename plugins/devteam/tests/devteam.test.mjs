@@ -370,3 +370,15 @@ test('run cleanup deletes only task branches merged into the epic branch', () =>
   assert.deepEqual(r.deleted, ['task/demo/T9'], 'only the already-merged (empty) branch goes');
   assert.deepEqual(r.kept.map((k) => k.branch).sort(), ['task/demo/T1', 'task/demo/T8']);
 });
+
+test('an unavailable Gemini report is kept separately and does not overwrite report.json', () => {
+  const { runDir, wt } = setupTask();
+  run(['task', 'start', runDir, 'T1', '--engine', 'gemini'], { cwd: wt });
+  const tp = transcript(wt + '/..', `DEVTEAM run=${runDir} task=T1 role=gemini-bridge mode=implement`,
+    { task_id: 'T1', status: 'unavailable', summary: 'UNAVAILABLE: agy returned no output (denied: command)', branch: '', head_sha: '', worktree: wt, files_changed: [], commands_run: [], contract_change_request: '' });
+  assert.equal(hook('subagent-stop', { cwd: wt, agent_type: 'devteam:gemini-bridge', agent_transcript_path: tp }).status, 0);
+  const files = fs.readdirSync(path.join(runDir, 'tasks', 'T1'));
+  assert.ok(files.some((f) => f.startsWith('unavailable-backend-engineer-implement-')), files.join(','));
+  assert.ok(!files.includes('report.json'));
+  assert.match(fs.readFileSync(path.join(runDir, 'ledger.md'), 'utf8'), /reason=UNAVAILABLE: agy returned no output/);
+});

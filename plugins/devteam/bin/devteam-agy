@@ -21,6 +21,11 @@ function emit(obj, code = 0) {
   process.exit(code);
 }
 const unavailable = (reason, extra = {}) => emit({ status: 'unavailable', reason: String(reason).slice(0, 1500), ...extra });
+/** Schema-complete "unavailable" task report, so the bridge can return it unchanged and the hook keeps the reason. */
+const taskUnavailable = (reason, taskId, wt) => emit({
+  task_id: taskId || '', status: 'unavailable', summary: `UNAVAILABLE: ${String(reason).slice(0, 1200)}`, reason: String(reason).slice(0, 1500),
+  branch: '', head_sha: '', worktree: wt || '', files_changed: [], commands_run: [], contract_change_request: '',
+});
 
 function agyBin() {
   if (process.env.DEVTEAM_AGY) return process.env.DEVTEAM_AGY;
@@ -167,18 +172,18 @@ async function main() {
   if (cmd === 'run') {
     const runDir = flags.run ? path.resolve(flags.run) : null;
     const taskId = flags.task;
-    if (!runDir || !taskId) unavailable('run needs --run <runDir> --task <id>');
+    if (!runDir || !taskId) taskUnavailable('run needs --run <runDir> --task <id>', taskId, cwd);
     const wt = U.worktreeRoot(cwd);
     const startArgs = ['task', 'start', runDir, taskId, '--engine', 'gemini', ...(flags.role ? ['--role', flags.role] : [])];
     const start = U.sh(DEVTEAM, startArgs, { cwd: wt });
-    if (start.code !== 0) unavailable(`devteam task start failed: ${(start.err || start.out).trim()}`);
+    if (start.code !== 0) taskUnavailable(`devteam task start failed: ${(start.err || start.out).trim()}`, taskId, wt);
     const brief = start.out;
     const marker = U.readJSON(path.join(wt, '.devteam', 'task.json'));
     const gateCmds = [...(cfg.gates?.contracts || []), ...(cfg.gates?.fast || [])];
     const prefixes = [...new Set(gateCmds.map((c) => c.split(/\s+/)[0]).concat(['pnpm', 'npx', 'node', 'ls', 'cat', 'grep']))];
     const allow = [
       ...grants('write_file', [wt]), ...grants('read_file', [wt, runDir, path.join(root, '.team', 'context')]),
-      ...prefixes.map((p) => `command(${p})`),
+      ...prefixes.map((p) => `command(${p})`), ...readonlyCommands(),
     ];
     const feedback = flags['feedback-file'] && U.exists(flags['feedback-file']) ? U.readText(flags['feedback-file']) : '';
     const body = roleBody(marker.role, root);
@@ -193,12 +198,12 @@ async function main() {
         `Your task brief:\n${brief}`,
         feedback ? `Review feedback to address:\n${feedback}` : '',
         lastGate && !lastGate.pass ? `The quality gate FAILED on your previous attempt. Fix this:\n${lastGate.reason}\n${(lastGate.checks || []).filter((c) => c.code !== 0).map((c) => `$ ${c.cmd}\n${c.tail}`).join('\n')}` : '',
-        `Edit only the files listed under "Files you may change". You may run: ${gateCmds.join(' ; ') || 'pnpm commands'} to check your work.`,
+        `Edit only the files listed under "Files you may change". You may run: ${gateCmds.join(' ; ') || 'pnpm commands'} to check your work. Any other shell command is denied and aborts your run. Read-only commands allowed: ${READONLY_COMMANDS.join(', ')}.`,
         'When finished, return the structured output: status (done | blocked | needs_contract_change | failed), summary, decisions, open_questions, risks, tests_added, deps_requested, contract_change_request ("" if none). The harness fills in branch, head and files.',
       ].filter(Boolean).join('\n\n');
-      const r = runAgy({ prompt, cwd: wt, mode: 'accept-edits', model, schema: schemaFile('agy-task'), allow, timeoutSec: 420, log: path.join(wt, '.devteam', `agy-run-${attempt}.log`) });
+      const r = runAgy({ prompt, cwd: wt, mode: 'accept-edits', model, schema: schemaFile('agy-task'), allow, timeoutSec: 420, log: path.join(runDir, 'tasks', taskId, `agy-run-${marker.engine || 'gemini'}-${attempt}.log`) });
       commands.push({ cmd: `agy -p (attempt ${attempt}, ${model})`, exit_code: r.ok ? 0 : 1 });
-      if (!r.ok) { if (attempt === 1) unavailable(r.reason, { task_id: taskId }); break; }
+      if (!r.ok) { if (attempt === 1) taskUnavailable(r.reason, taskId, wt); break; }
       agyOut = r.structured || {};
       if (agyOut.status && agyOut.status !== 'done') break;
       // Revert anything outside the task's ownership before committing (agy edits bypass the edit hook).

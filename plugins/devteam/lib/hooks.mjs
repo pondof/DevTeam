@@ -162,9 +162,14 @@ export function subagentStop(input) {
   const dir = path.join(runDir, 'tasks', taskId);
   fs.mkdirSync(dir, { recursive: true });
   const roleName = marker?.role || tr.marker?.role || role.name;
+  const unavailable = report && (report.status === 'unavailable' || /^UNAVAILABLE/.test(report.summary || ''));
   if (report) {
     let name;
-    if (mode === 'implement' || mode === 'fix') name = 'report.json';
+    if (unavailable) {
+      // Keep the reason: a Claude fallback will write report.json next.
+      const n = fs.readdirSync(dir).filter((f) => f.startsWith('unavailable-')).length + 1;
+      name = `unavailable-${roleName}-${mode}-${n}.json`;
+    } else if (mode === 'implement' || mode === 'fix') name = 'report.json';
     else if (mode === 'review' || mode === 'final') {
       const n = fs.readdirSync(dir).filter((f) => f.startsWith(`review-${roleName}`)).length + 1;
       name = `review-${roleName}-${n}.json`;
@@ -179,7 +184,7 @@ export function subagentStop(input) {
     else { patch.support_head = head; patch.support_role = roleName; }
     try { updateState(runDir, taskId, patch); } catch { /* best effort */ }
   }
-  appendLedger(runDir, 'agent', `stop ${input.agent_type} task=${taskId} mode=${mode}${report?.status ? ' status=' + report.status : ''}${report?.verdict ? ' verdict=' + report.verdict : ''}${gateStatus ? ' gate=' + gateStatus : ''}`);
+  appendLedger(runDir, 'agent', `stop ${input.agent_type} task=${taskId} mode=${mode}${report?.status ? ' status=' + report.status : ''}${unavailable ? ` reason=${String(report.reason || report.summary || '').slice(0, 160)}` : ''}${report?.verdict ? ' verdict=' + report.verdict : ''}${gateStatus ? ' gate=' + gateStatus : ''}`);
 }
 
 // ---------- SessionStart ----------
