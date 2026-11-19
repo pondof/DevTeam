@@ -44,7 +44,19 @@ function grants(kind, dirs) {
 }
 
 /** Run agy once in print mode. Returns {ok, response, structured, usage, denied, reason}. */
-function runAgy({ prompt, cwd, mode = 'plan', model, schema, allow = [], timeoutSec = 420, log }) {
+/**
+ * Headless agy aborts the WHOLE run when the model tries any shell command outside its grants (it cannot prompt),
+ * and models improvise commands (e.g. `find docs || echo none`). Retry once, telling it to use file tools only.
+ */
+const NO_SHELL_RETRY = 'IMPORTANT: your previous attempt was aborted because it ran a shell command that is not allowed in this environment. Do not run any shell commands at all this time. Use only your file reading and writing tools; the harness runs all checks.';
+function runAgy(opts) {
+  const first = runAgyOnce(opts);
+  if (first.ok || !first.deniedCommand || opts.noRetry) return first;
+  const second = runAgyOnce({ ...opts, prompt: `${opts.prompt}\n\n${NO_SHELL_RETRY}`, log: opts.log ? `${opts.log}.retry` : undefined });
+  return second.ok ? { ...second, retried: true } : { ...second, reason: `${second.reason} (after a no-shell retry; first: ${first.reason.slice(0, 200)})` };
+}
+
+function runAgyOnce({ prompt, cwd, mode = 'plan', model, schema, allow = [], timeoutSec = 420, log }) {
   const remaining = Math.floor((DEADLINE_MS - (Date.now() - T0)) / 1000) - 30;
   const t = Math.max(60, Math.min(timeoutSec, remaining));
   const args = ['-p', prompt, '--output-format', 'json', '--sandbox', '--mode', mode, '--print-timeout', `${t}s`,
@@ -67,7 +79,7 @@ function runAgy({ prompt, cwd, mode = 'plan', model, schema, allow = [], timeout
   if (j.status !== 'SUCCESS') return { ok: false, reason: `agy status ${j.status}: ${U.tail(errText, 10)}`, raw: j };
   if (!j.response && !j.structured_output) {
     const denied = (j.denied_actions || []).map((d) => d.action).join(', ');
-    return { ok: false, reason: `agy returned no output${denied ? ` (denied: ${denied})` : ''}${notes ? `: ${U.tail(notes, 5)}` : ''}` };
+    return { ok: false, deniedCommand: /\bcommand\b/.test(denied), reason: `agy returned no output${denied ? ` (denied: ${denied})` : ''}${notes ? `: ${U.tail(notes, 5)}` : ''}` };
   }
   return { ok: true, response: j.response || '', structured: j.structured_output || null, usage: j.usage || null, denied: j.denied_actions || [], conversation: j.conversation_id };
 }

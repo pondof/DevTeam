@@ -166,3 +166,21 @@ test('run: agy failures return a schema-complete unavailable report; blocked pas
   assert.equal(b.status, 'needs_contract_change');
   assert.equal(b.contract_change_request, 'add field total to ProjectList');
 });
+
+test('a denied shell command is retried once with a no-shell instruction (run and review)', () => {
+  const ctx = setup();
+  const { runDir, wt } = withTask(ctx);
+  const r = ctx.agy(['run', '--run', runDir, '--task', 'D1'], 'denied-once', wt);
+  assert.equal(r.json.status, 'done', JSON.stringify(r.json));
+  assert.deepEqual(r.json.files_changed, ['docs/api/new.md']);
+  const calls = ctx.calls();
+  assert.equal(calls.length, 2, 'exactly one retry');
+  assert.match(flag(calls[1].argv, '-p'), /Do not run any shell commands at all/);
+  assert.doesNotMatch(flag(calls[0].argv, '-p'), /Do not run any shell commands at all/);
+  fs.rmSync(path.join(ctx.home, 'fake-agy-count'));
+  const rv = ctx.agy(['review', '--kind', 'final'], 'denied-once', ctx.dir, { FAKE_AGY_THEN: 'review' }).json;
+  assert.equal(rv.summary, 'review after retry');
+  // a model that keeps doing it still degrades to unavailable, with both reasons
+  const always = ctx.agy(['review', '--kind', 'final'], 'denied').json;
+  assert.match(always.summary, /after a no-shell retry/);
+});

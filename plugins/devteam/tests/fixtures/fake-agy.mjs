@@ -30,6 +30,20 @@ switch (mode) {
     process.stderr.write('E1119 12:00:00.000000 1 errorreport.go:1] RESOURCE_EXHAUSTED: quota exceeded for model\nError: 429 Too Many Requests\n');
     process.exit(1);
     break;
+  case 'denied-once': { // first call: denied command (abort); later calls: behave like FAKE_AGY_THEN
+    const counter = path.join(process.env.HOME, 'fake-agy-count');
+    const n = fs.existsSync(counter) ? Number(fs.readFileSync(counter, 'utf8')) : 0;
+    fs.writeFileSync(counter, String(n + 1));
+    if (n === 0) {
+      process.stderr.write('jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.\n');
+      ok({ denied_actions: [{ action: 'command', display_name: 'Bash' }] });
+    } else if ((process.env.FAKE_AGY_THEN || 'edit') === 'edit') {
+      fs.mkdirSync(path.join(process.cwd(), 'docs', 'api'), { recursive: true });
+      fs.writeFileSync(path.join(process.cwd(), 'docs', 'api', 'new.md'), '# new doc\n');
+      ok({ structured_output: { status: 'done', summary: 'Wrote docs/api/new.md after retry.', contract_change_request: '' } });
+    } else ok({ structured_output: { verdict: 'approve', summary: 'review after retry', findings: [] } });
+    break;
+  }
   case 'garbage':
     process.stdout.write('this is not json\n');
     break;
