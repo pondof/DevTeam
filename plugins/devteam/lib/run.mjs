@@ -155,7 +155,30 @@ export function collect(runDir, { prune = false } = {}) {
       appendLedger(runDir, 'collect', `removed merged worktree for ${task.taskId}`);
     }
   }
+  // Worktrees whose directories were already removed (e.g. by the workflow's own cleanup) leave stale metadata.
+  if (prune) sh('git', ['worktree', 'prune'], { cwd: root });
   return found;
+}
+
+/**
+ * Delete this run's task branches that are fully merged into the epic branch (git branch -d semantics:
+ * unmerged branches are kept and reported). Commit trailers keep the audit trail after deletion.
+ */
+export function cleanupBranches(runDir) {
+  const run = readJSON(path.join(runDir, 'run.json'));
+  const root = run.root;
+  sh('git', ['worktree', 'prune'], { cwd: root });
+  const list = (tryGit(['for-each-ref', '--format=%(refname:short)', `refs/heads/task/${run.slug}/`], root) || '').split('\n').filter(Boolean);
+  const deleted = [];
+  const kept = [];
+  for (const b of list) {
+    const merged = sh('git', ['merge-base', '--is-ancestor', b, run.epic_branch], { cwd: root }).code === 0;
+    if (!merged) { kept.push({ branch: b, reason: `not merged into ${run.epic_branch}` }); continue; }
+    const r = sh('git', ['branch', '-D', b], { cwd: root }); // ancestry checked above against the epic, not HEAD
+    if (r.code === 0) deleted.push(b); else kept.push({ branch: b, reason: (r.err || r.out).trim() });
+  }
+  if (deleted.length) appendLedger(runDir, 'cleanup', `deleted merged task branches: ${deleted.join(', ')}`);
+  return { deleted, kept };
 }
 
 export function ensureEpicBranch(runDir) {

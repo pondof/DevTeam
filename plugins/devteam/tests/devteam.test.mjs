@@ -355,3 +355,18 @@ test('plugin lint has no errors', () => {
   const r = run(['lint']);
   assert.equal(r.status, 0, r.stdout);
 });
+
+test('run cleanup deletes only task branches merged into the epic branch', () => {
+  const { dir, runDir, wt } = setupTask();
+  run(['task', 'start', runDir, 'T1'], { cwd: wt });
+  fs.writeFileSync(path.join(wt, 'apps/api/src/index.ts'), 'export const x = 5;\n');
+  run(['commit', 'T1: x=5'], { cwd: wt });
+  g(dir, 'branch', 'task/demo/T9', 'team/demo');
+  g(dir, 'checkout', '-q', '-b', 'task/demo/T8', 'team/demo');
+  fs.writeFileSync(path.join(dir, 'apps/web/page.tsx'), 'export default 8;\n');
+  g(dir, 'commit', '-qam', 'unmerged work');
+  g(dir, 'checkout', '-q', 'team/demo');
+  const r = JSON.parse(run(['run', 'cleanup', runDir], { cwd: dir }).stdout);
+  assert.deepEqual(r.deleted, ['task/demo/T9'], 'only the already-merged (empty) branch goes');
+  assert.deepEqual(r.kept.map((k) => k.branch).sort(), ['task/demo/T1', 'task/demo/T8']);
+});

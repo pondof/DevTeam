@@ -21,6 +21,7 @@ const HELP = `devteam — multi-agent team plumbing
   devteam run ledger <run> <event> <message...>
   devteam run feedback <run> <task> <file|->   store review feedback for the next fix round
   devteam run collect <run> [--prune]         gather worktree results; remove merged worktrees
+  devteam run cleanup <run>                   delete task branches already merged into the epic branch
 
   devteam plan check [run]                  validate plan.json, compute waves (writes them back)
   devteam task start <run> <task> [--role r] [--allow-main] [--engine claude|gemini]
@@ -101,6 +102,7 @@ async function main(argv) {
         return 0;
       }
       case 'collect': console.log(JSON.stringify(R.collect(R.resolveRunDir(rest[0]), { prune: !!flags.prune }), null, 2)); return 0;
+      case 'cleanup': console.log(JSON.stringify(R.cleanupBranches(R.resolveRunDir(rest[0])), null, 2)); return 0;
       default: process.stdout.write(HELP); return 1;
     }
   }
