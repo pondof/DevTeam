@@ -1,7 +1,7 @@
 // Deterministic quality gate. Results are written to .devteam/gates.json stamped with HEAD,
 // so the SubagentStop hook and reviewers can trust them without re-running anything.
 import path from 'node:path';
-import { git, shell, worktreeRoot, readJSON, writeJSON, nowIso, tail, matchAny } from './util.mjs';
+import { git, tryGit, shell, worktreeRoot, readJSON, writeJSON, nowIso, tail, matchAny } from './util.mjs';
 import { effectiveConfig } from './config.mjs';
 import { markerPath } from './task.mjs';
 
@@ -39,7 +39,9 @@ export function runGate({ level = 'fast', cwd = process.cwd(), skipOwnership = f
     return finish(wt, result);
   }
   if (marker && !skipOwnership) {
-    const files = changedFiles(wt, marker.base_sha);
+    // Diff from the merge-base with the epic branch, so epic commits picked up later are not "this task's" changes.
+    const epicRef = marker.epic && tryGit(['rev-parse', '--verify', '--quiet', marker.epic], wt) ? marker.epic : marker.base_sha;
+    const files = changedFiles(wt, epicRef);
     const violations = ownershipViolations(files, marker.allowed);
     result.ownership = { ok: violations.length === 0, changed: files.length, violations };
     if (violations.length) {

@@ -81,7 +81,20 @@ export function startTask(runDir, taskId, { role: roleOverride, allowMain = fals
     attempts: (prev.attempts || 0) + (roleName === task.role ? 1 : 0),
   });
   appendLedger(runDir, 'task', `${taskId} started by ${roleName} (${engine}) in ${branch}${resumedFrom ? ` resumed from ${resumedFrom.slice(0, 10)}` : ''}`);
-  return { marker, brief: renderBrief(runDir, task, roleName, marker, cfg, plan, resumedFrom) };
+  const setup = setupWorktree(wt, cfg);
+  let brief = renderBrief(runDir, task, roleName, marker, cfg, plan, resumedFrom);
+  if (setup) brief = `${brief}\n## Worktree setup\n\`${setup.cmd}\` → ${setup.code === 0 ? 'ok' : `FAILED (exit ${setup.code}). Fix it before anything else:\n${setup.tail}`}\n`;
+  return { marker, brief, setup };
+}
+
+/** Install dependencies in a fresh worktree (worktrees do not share node_modules). */
+export function setupWorktree(wt, cfg) {
+  const cmd = cfg.worktree_setup;
+  if (!cmd) return null;
+  const check = cfg.worktree_setup_check || 'node_modules';
+  if (check && exists(path.join(wt, check))) return null;
+  const r = sh('/bin/sh', ['-c', cmd], { cwd: wt, timeout: 600000 });
+  return { cmd, code: r.code, tail: `${r.out}\n${r.err}`.trim().split('\n').slice(-20).join('\n') };
 }
 
 export function renderBrief(runDir, task, roleName, marker, cfg, plan, resumedFrom) {
