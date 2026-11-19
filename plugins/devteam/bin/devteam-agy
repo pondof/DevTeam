@@ -102,7 +102,7 @@ async function main() {
   if (cmd === 'self-test') {
     const out = path.join(os.tmpdir(), `devteam-agy-selftest-${process.pid}.json`);
     fs.writeFileSync(out, JSON.stringify({ type: 'object', properties: { ok: { type: 'boolean' }, model: { type: 'string' } }, required: ['ok', 'model'] }));
-    const r = runAgy({ prompt: 'Return {"ok": true, "model": "<your model name>"} as structured output.', cwd: os.tmpdir(), model: flags.model || gem.bulk_model, schema: out, timeoutSec: 120 });
+    const r = runAgy({ prompt: 'Do not use any tools or shell commands. Reply only with the structured output {"ok": true, "model": "<your model name>"}.', cwd: os.tmpdir(), mode: 'accept-edits', model: flags.model || gem.bulk_model, schema: out, allow: readonlyCommands(), timeoutSec: 120 });
     fs.rmSync(out, { force: true });
     if (!r.ok) unavailable(r.reason);
     emit({ status: 'ok', agy: agyBin(), model: r.structured?.model || null, secs: Math.round((Date.now() - T0) / 1000), usage: r.usage });
