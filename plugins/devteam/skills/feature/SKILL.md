@@ -69,3 +69,6 @@ You are the orchestrator for a full feature. Follow these steps in order. Keep c
 
 ## Recovery
 After a compaction, a restart, or a usage-limit pause: `devteam run status` first. Merged tasks are skipped automatically on the next build call (`done` in the args). The Workflow tool can also resume a stopped run with `resumeFromRunId`.
+
+## Reporting
+Report only from the Workflow result and `devteam run status`. Never describe results, counts or merges before the Workflow tool has returned. While it runs there is nothing to report yet.

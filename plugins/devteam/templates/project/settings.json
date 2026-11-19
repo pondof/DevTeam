@@ -27,11 +27,27 @@
   "sandbox": {
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
-    "excludedCommands": ["docker *", "agy *", "devteam-agy *", "gh *"],
+    "excludedCommands": [
+      "docker *",
+      "agy *",
+      "devteam *",
+      "devteam-agy *",
+      "gh *",
+      "gitleaks *",
+      "osv-scanner *",
+      "semgrep *"
+    ],
     "network": {
       "allowedDomains": [
-        "registry.npmjs.org", "*.npmjs.org", "github.com", "*.github.com", "*.githubusercontent.com",
-        "semgrep.dev", "*.semgrep.dev", "api.osv.dev", "osv-vulnerabilities.storage.googleapis.com"
+        "registry.npmjs.org",
+        "*.npmjs.org",
+        "github.com",
+        "*.github.com",
+        "*.githubusercontent.com",
+        "semgrep.dev",
+        "*.semgrep.dev",
+        "api.osv.dev",
+        "osv-vulnerabilities.storage.googleapis.com"
       ],
       "allowLocalBinding": true
     }

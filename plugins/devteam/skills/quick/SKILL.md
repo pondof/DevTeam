@@ -33,3 +33,6 @@ allowed-tools:
 6. `devteam run args "$RUN" build --mode quick` → **Workflow** `devteam:build` with that JSON object as `args`.
 7. On return: `devteam run collect "$RUN" --prune`, then report in ≤ 5 lines: what changed, review verdicts, and the branch `team/<slug>`.
 8. AskUserQuestion: **Push and open PR** / **Keep local**. Push and `gh pr create` only on an explicit yes (same commands as `/devteam:feature` step 5).
+
+## Reporting
+Report only from the Workflow result and `devteam run status`. Never describe results, counts or merges before the Workflow tool has returned. While it runs there is nothing to report yet.

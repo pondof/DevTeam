@@ -1,7 +1,7 @@
 // /devteam:init — non-destructive project setup. Existing files are kept unless --force.
 import fs from 'node:fs';
 import path from 'node:path';
-import { PLUGIN_ROOT, mainRoot, readJSON, writeJSON, readText, exists } from './util.mjs';
+import { PLUGIN_ROOT, mainRoot, readJSON, writeJSON, readText, exists, sh } from './util.mjs';
 
 const T = (...p) => path.join(PLUGIN_ROOT, 'templates', 'project', ...p);
 
@@ -45,7 +45,7 @@ export function initProject({ stack = 'ts', sandbox = true, force = false, cwd =
 
   // .gitignore
   const gi = path.join(root, '.gitignore');
-  const lines = ['.team/runs/', '.team/current', '.team/context/', '.team/hook-errors.log', '.devteam/', '.claude/worktrees/', '.claude/settings.local.json'];
+  const lines = ['.team/runs/', '.team/current', '.team/context/', '.team/worktrees/', '.team/hook-errors.log', '.devteam/', '.claude/worktrees/', '.claude/settings.local.json'];
   const cur = readText(gi);
   const missing = lines.filter((l) => !cur.split('\n').includes(l));
   if (missing.length) {
@@ -65,6 +65,15 @@ export function initProject({ stack = 'ts', sandbox = true, force = false, cwd =
     deny: union(existing.permissions?.deny, tmpl.permissions.deny),
   };
   if (sandbox && !existing.sandbox) merged.sandbox = tmpl.sandbox;
+  if (merged.sandbox) {
+    // Sandboxed agent commands may write the run ledger and pnpm's global store (both outside the worktree).
+    // Git metadata lives in the main checkout's .git, which the sandbox always protects: that is why
+    // `devteam *` (task start, commit, merge) is in excludedCommands rather than .git in allowWrite.
+    const extra = [path.join(root, '.team')];
+    const store = sh('pnpm', ['store', 'path'], { cwd: root });
+    if (store.code === 0 && store.out.trim()) extra.push(path.dirname(store.out.trim()));
+    merged.sandbox.filesystem = { ...(merged.sandbox.filesystem || {}), allowWrite: union(merged.sandbox.filesystem?.allowWrite, extra) };
+  }
   writeJSON(sp, merged);
   actions.push(`merged   .claude/settings.json${sandbox && !existing.sandbox ? ' (sandbox on)' : ''}`);
 

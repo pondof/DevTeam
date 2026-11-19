@@ -173,7 +173,18 @@ async function main() {
     const runDir = flags.run ? path.resolve(flags.run) : null;
     const taskId = flags.task;
     if (!runDir || !taskId) taskUnavailable('run needs --run <runDir> --task <id>', taskId, cwd);
-    const wt = U.worktreeRoot(cwd);
+    let wt = U.worktreeRoot(cwd);
+    if (!wt) taskUnavailable('not inside a git worktree', taskId, cwd);
+    if (path.resolve(wt).startsWith(path.resolve(root) + path.sep)) {
+      // agy silently drops writes to git-ignored paths inside the enclosing repo, which is where Claude Code
+      // puts worktrees (.claude/worktrees/). Work in a sibling worktree outside the repo, from the same commit.
+      const base = U.git(['rev-parse', 'HEAD'], wt);
+      const alt = path.join(os.homedir(), '.cache', 'devteam', 'worktrees', path.basename(root), `${path.basename(runDir)}-${taskId}-${process.pid}`);
+      fs.mkdirSync(path.dirname(alt), { recursive: true });
+      const add = U.sh('git', ['worktree', 'add', '-q', '-b', `devteam-agy-${taskId}-${process.pid}`, alt, base], { cwd: root });
+      if (add.code !== 0) taskUnavailable(`could not create a Gemini worktree: ${(add.err || add.out).trim()}`, taskId, wt);
+      wt = alt;
+    }
     const startArgs = ['task', 'start', runDir, taskId, '--engine', 'gemini', ...(flags.role ? ['--role', flags.role] : [])];
     const start = U.sh(DEVTEAM, startArgs, { cwd: wt });
     if (start.code !== 0) taskUnavailable(`devteam task start failed: ${(start.err || start.out).trim()}`, taskId, wt);
@@ -208,7 +219,7 @@ async function main() {
       if (agyOut.status && agyOut.status !== 'done') break;
       // Revert anything outside the task's ownership before committing (agy edits bypass the edit hook).
       const reverted = [];
-      for (const line of U.git(['status', '--porcelain'], wt).split('\n').filter(Boolean)) {
+      for (const line of U.git(['status', '--porcelain', '--untracked-files=all'], wt).split('\n').filter(Boolean)) {
         const file = line.slice(3).split(' -> ').pop().replace(/^"|"$/g, '');
         if (file.startsWith('.devteam/') || U.matchAny(file, marker.allowed)) continue;
         if (line.startsWith('??')) fs.rmSync(path.join(wt, file), { recursive: true, force: true });
@@ -226,7 +237,10 @@ async function main() {
     }
     const head = U.git(['rev-parse', 'HEAD'], wt);
     const files = U.git(['diff', '--name-only', `${marker.base_sha}...HEAD`], wt).split('\n').filter(Boolean);
-    const status = agyOut?.status && agyOut.status !== 'done' ? agyOut.status : lastGate?.pass ? 'done' : 'failed';
+    // Never report success for a task that committed nothing (an empty tree is trivially green).
+    const nothing = !files.length && (!agyOut?.status || agyOut.status === 'done');
+    if (nothing) (agyOut = agyOut || {}).risks = [...(agyOut.risks || []), 'no file changes reached the worktree; the task was not done'];
+    const status = agyOut?.status && agyOut.status !== 'done' ? agyOut.status : nothing ? 'failed' : lastGate?.pass ? 'done' : 'failed';
     emit({
       task_id: taskId, status, engine: 'gemini', model,
       summary: (agyOut?.summary || '') + (status === 'failed' && lastGate ? ` [gate: ${lastGate.reason || 'red'}]` : ''),

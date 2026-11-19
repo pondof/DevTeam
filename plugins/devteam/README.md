@@ -97,6 +97,17 @@ Optional templates (`devteam new-role --list-templates`): mobile-engineer, ml-en
 
 Make your linters and formatters ignore `.devteam/` and `.team/` (biome: `vcs.useIgnoreFile: true`; eslint: ignore patterns).
 
+### Sandbox model
+`/devteam:init` turns on Claude Code's Bash sandbox with `autoAllowBashIfSandboxed`, so agents' ad-hoc commands (`pnpm test`, `grep`…) run without prompts but cannot write outside their worktree, the run ledger (`.team/`) and the pnpm store.
+- `devteam *` is in `excludedCommands`. Task worktrees keep their git metadata in the main checkout's `.git`, and the sandbox always protects `.git`, even with `allowWrite`. So the trusted, fixed `devteam task start / commit / merge` commands run outside the sandbox, and raw `git commit` inside the sandbox fails by design. Use `devteam --cwd <dir> …` instead of `cd <dir> && devteam …`, because a compound command leaves the sandbox only if every part matches an exclusion.
+- `gitleaks`, `osv-scanner` and `semgrep` are excluded too, because inside the sandbox they cannot validate TLS to their vulnerability databases.
+- `agy`/`devteam-agy` are excluded and use Antigravity's own `--sandbox` plus path-scoped grants.
+
+### Where Gemini works
+`devteam-agy run` (overflow tasks) does not edit inside `.claude/worktrees/`. It creates a sibling worktree under `~/.cache/devteam/worktrees/<repo>/` from the same commit, because agy did not reliably persist writes under the repo's ignored `.claude/` directory. The branch it commits to is what the integrator merges, and `devteam run collect --prune` removes the worktree afterwards. Maps and reviews run in agy's `accept-edits` mode, because `plan` mode denies every shell command. With no `write_file` grant they stay read-only. A Gemini task that commits no file changes is reported `failed`, never `done`.
+
+Known agy limitation: its terminal sandbox rejects glob grants, so Gemini often cannot run `pnpm` itself ("globs not supported in readonly path"). The wrapper runs the gate for it and feeds failures back for one retry.
+
 ## Adding a role
 
 ```sh
