@@ -1,6 +1,6 @@
 {
   "name": "devteam",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A multi-agent software team for Claude Code: contract-first planning, file-ownership scheduling, isolated worktrees, hook-enforced gates, cross-model review through Antigravity, and an on-disk ledger for every run.",
   "author": {
     "name": "devteam maintainers"

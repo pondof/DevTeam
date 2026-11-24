@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+
+# Claude Code and devteam state, when working on the plugin itself
+.claude/settings.local.json
+.claude/worktrees/
+.devteam/
+.team/

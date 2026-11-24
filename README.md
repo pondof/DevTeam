@@ -32,13 +32,20 @@ You ──► orchestrator (claude --agent devteam:orchestrator, or /devteam:* i
 Prerequisites: Node 20+ (22 recommended), git, and for the TypeScript stack pnpm and Docker (OrbStack or Docker Desktop). Optional, but used by the security gate: `brew install gitleaks osv-scanner semgrep`. Optional, for Gemini: the Antigravity CLI (`agy`) logged in.
 
 ```sh
-claude plugin marketplace add ~/dev-team
+claude plugin marketplace add pondof/DevTeam
 claude plugin install devteam@devteam
-# optional: the CLI in your own terminal (Claude sessions get it on PATH automatically)
-export PATH="$HOME/dev-team/plugins/devteam/bin:$PATH"
 ```
 
-The plugin is read in place from `~/dev-team/plugins/devteam`. Edits apply to new sessions. Its hooks are no-ops outside devteam projects and devteam agents.
+Claude sessions get the `devteam` CLI on PATH automatically. To change the plugin, or to use the CLI in your own terminal, install from a clone instead:
+
+```sh
+git clone https://github.com/pondof/DevTeam.git ~/dev-team
+claude plugin marketplace add ~/dev-team
+claude plugin install devteam@devteam
+export PATH="$HOME/dev-team/bin:$PATH"   # optional: the CLI in your own terminal
+```
+
+A clone is read in place, so edits apply to new sessions. The hooks are no-ops outside devteam projects and devteam agents.
 
 Open each project once in an interactive `claude` session and accept the workspace trust dialog. Until then Claude Code ignores the project's `.claude/settings.json` permission allowlist, and headless (`claude -p`) runs fall back to your permission mode.
 
@@ -152,12 +159,12 @@ tasks/_epic/                 final reviews, QA
 ## Develop
 
 ```sh
-plugins/devteam/tests/run.sh          # 40 tests in temp git repos: scheduler, gate, merge, init, new-role,
-                                      # hooks driven by REAL Claude Code payloads (tests/fixtures/hooks, transcripts),
-                                      # devteam-agy against a fake agy (tests/fixtures/fake-agy.mjs)
-plugins/devteam/tests/capture-hook-fixtures.sh   # re-capture real hook payloads after a Claude Code upgrade
-plugins/devteam/bin/devteam lint      # registry ↔ agents ↔ skills ↔ workflows consistency
-claude plugin validate plugins/devteam
+tests/run.sh                     # 46 tests in temp git repos: scheduler, gate, merge, init, new-role,
+                                 # hooks driven by REAL Claude Code payloads (tests/fixtures/hooks, transcripts),
+                                 # devteam-agy against a fake agy (tests/fixtures/fake-agy.mjs)
+tests/capture-hook-fixtures.sh   # re-capture real hook payloads after a Claude Code upgrade
+bin/devteam lint                 # registry ↔ agents ↔ skills ↔ workflows consistency
+claude plugin validate .
 ```
 
 Layout: `agents/` (role prompts), `workflows/` (`design`, `build`, `review`), `skills/` (`/devteam:*`), `hooks/hooks.json` → `bin/devteam hook …`, `lib/` (all deterministic logic), `bin/devteam-agy` (Antigravity adapter), `templates/` (project files, schemas, role templates, protocols).
@@ -169,3 +176,7 @@ Layout: `agents/` (role prompts), `workflows/` (`design`, `build`, `review`), `s
 - Ownership is enforced on the Edit/Write tools and on the branch diff. Bash writes are only caught at the gate.
 - Gemini runs through `agy` print mode with path-scoped grants. Its edits bypass the Claude edit hook, so the wrapper reverts out-of-ownership files before committing and the gate re-checks.
 - CI stays deterministic: no LLM calls and no API keys in GitHub Actions.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

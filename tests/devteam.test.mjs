@@ -1,4 +1,4 @@
-// node --test plugins/devteam/tests — fixture tests for the devteam CLI, scheduler, gates, merges and hooks.
+// node --test tests — fixture tests for the devteam CLI, scheduler, gates, merges and hooks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
