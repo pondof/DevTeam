@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "devteam",
-      "source": "./plugins/devteam",
+      "source": "./",
       "description": "A multi-agent software team: orchestrator, architect, backend/frontend/data/devops engineers, QA, devsecops, reviewers, with Antigravity (Gemini) for cross-model review, repo mapping and overflow work.",
       "version": "0.1.0",
       "category": "development"
